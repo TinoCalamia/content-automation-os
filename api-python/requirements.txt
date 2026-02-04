@@ -1,0 +1,29 @@
+# FastAPI and server
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.6
+
+# Pydantic
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Supabase
+supabase>=2.3.0
+
+# Google AI (for text generation)
+google-generativeai>=0.3.0
+
+# Content extraction
+newspaper3k>=0.2.8
+youtube-transcript-api>=0.6.2
+beautifulsoup4>=4.12.0
+lxml>=5.1.0
+httpx>=0.26.0
+
+# Utilities
+python-dotenv>=1.0.0
+tenacity>=8.2.0
+
+# Type checking
+mypy>=1.8.0
+types-requests>=2.31.0
