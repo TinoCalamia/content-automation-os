@@ -13,6 +13,14 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     
     if (!error) {
+      // If this is an extension auth flow, redirect to the extension callback page
+      const extensionId = searchParams.get('extensionId');
+      if (extensionId) {
+        return NextResponse.redirect(
+          `${origin}/auth/extension-callback?extensionId=${extensionId}`
+        );
+      }
+
       // Check if user has any workspaces
       const { data: { user } } = await supabase.auth.getUser();
       

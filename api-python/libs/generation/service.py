@@ -54,11 +54,14 @@ class GenerationService:
         workspace_id: str,
         platform: str,
         source_ids: Optional[List[str]] = None,
+        custom_text: Optional[str] = None,
         angle: Optional[str] = None,
         run_id: Optional[str] = None,
         generate_images: bool = True,
+        image_source: str = "generate",
         image_styles: Optional[List[str]] = None,
-        image_aspect_ratio: str = "1:1"
+        image_aspect_ratio: str = "1:1",
+        source_image_urls: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
         Generate content drafts for a platform.
@@ -67,8 +70,14 @@ class GenerationService:
             workspace_id: Workspace ID
             platform: Target platform (linkedin or x)
             source_ids: Optional specific source IDs to use
+            custom_text: Optional custom text input to generate from
             angle: Optional content angle
             run_id: Optional generation run ID
+            generate_images: Whether to include images
+            image_source: 'generate' for AI images, 'original' for source images
+            image_styles: Styles for AI-generated images
+            image_aspect_ratio: Aspect ratio for AI-generated images
+            source_image_urls: Original image URLs when image_source='original'
             
         Returns:
             Generation result with draft ID and content
@@ -76,10 +85,20 @@ class GenerationService:
         if not self.gemini:
             raise ValueError("Gemini client not configured")
         
-        # 1. Fetch sources
-        sources = await self._fetch_sources(workspace_id, source_ids)
+        # 1. Fetch sources or build synthetic source from custom text
+        if custom_text and custom_text.strip():
+            sources = [{
+                "id": "custom",
+                "title": custom_text.strip()[:100],
+                "summary": custom_text.strip(),
+                "key_points": [],
+            }]
+            logger.info("Using custom text input for generation")
+        else:
+            sources = await self._fetch_sources(workspace_id, source_ids)
+        
         if not sources:
-            raise ValueError("No sources available for generation")
+            raise ValueError("No sources available for generation. Provide source IDs or custom text.")
         
         # 2. Fetch background context
         context = await self._fetch_context(workspace_id, platform)
@@ -101,34 +120,46 @@ class GenerationService:
         selected_content = variants[0]["content"] if variants else ""
         
         # 7. Save draft to database
+        # Filter out synthetic "custom" source ID
+        real_source_ids = [s["id"] for s in sources[:3] if s["id"] != "custom"]
         draft_id = await self._save_draft(
             workspace_id=workspace_id,
             platform=platform,
             content=selected_content,
             variants=variants,
             hashtags=hashtags,
-            source_ids=[s["id"] for s in sources[:3]],
+            source_ids=real_source_ids,
             run_id=run_id
         )
         
-        # 8. Generate images in parallel (if enabled and image service available)
+        # 8. Handle images based on image_source mode
         images = []
-        if generate_images and self.image_service:
-            try:
-                styles = image_styles or DEFAULT_IMAGE_STYLES
-                logger.info(f"Generating {len(styles)} images for draft {draft_id}")
-                
-                image_result = await self.image_service.generate_batch_images(
+        if generate_images:
+            if image_source == "original" and source_image_urls:
+                # Use original images from sources
+                images = await self._save_source_images(
+                    workspace_id=workspace_id,
                     draft_id=draft_id,
-                    count=len(styles),
-                    styles=styles,
-                    aspect_ratio=image_aspect_ratio,
-                    include_logo=True
+                    image_urls=source_image_urls
                 )
-                images = image_result.get("images", [])
-                logger.info(f"Generated {len(images)} images successfully")
-            except Exception as e:
-                logger.error(f"Image generation failed (continuing without images): {e}")
+                logger.info(f"Attached {len(images)} original source images to draft {draft_id}")
+            elif image_source == "generate" and self.image_service:
+                # Generate AI images
+                try:
+                    styles = image_styles or DEFAULT_IMAGE_STYLES
+                    logger.info(f"Generating {len(styles)} images for draft {draft_id}")
+                    
+                    image_result = await self.image_service.generate_batch_images(
+                        draft_id=draft_id,
+                        count=len(styles),
+                        styles=styles,
+                        aspect_ratio=image_aspect_ratio,
+                        include_logo=True
+                    )
+                    images = image_result.get("images", [])
+                    logger.info(f"Generated {len(images)} images successfully")
+                except Exception as e:
+                    logger.error(f"Image generation failed (continuing without images): {e}")
         
         return {
             "draft_id": draft_id,
@@ -136,7 +167,7 @@ class GenerationService:
             "content": selected_content,
             "variants": variants,
             "hashtags": hashtags,
-            "source_ids": [s["id"] for s in sources[:3]],
+            "source_ids": real_source_ids,
             "quality_scores": quality_scores,
             "images": images
         }
@@ -226,6 +257,53 @@ class GenerationService:
             "content": new_content or draft["content_text"],
             "result_data": result_data
         }
+    
+    async def _save_source_images(
+        self,
+        workspace_id: str,
+        draft_id: str,
+        image_urls: List[str]
+    ) -> List[Dict[str, Any]]:
+        """
+        Save original source image URLs as images linked to the draft.
+        
+        These are stored with storage_path set to the external URL directly,
+        so they can be displayed in the UI without needing Supabase storage.
+        """
+        if not self.supabase:
+            return []
+        
+        saved_images = []
+        now = datetime.now(timezone.utc).isoformat()
+        
+        for url in image_urls:
+            image_id = str(uuid.uuid4())
+            try:
+                self.supabase.table("images").insert({
+                    "id": image_id,
+                    "workspace_id": workspace_id,
+                    "draft_id": draft_id,
+                    "prompt": "Original source image",
+                    "model": "source",
+                    "storage_path": url,
+                    "aspect_ratio": "1:1",
+                    "style": "original",
+                    "created_at": now
+                }).execute()
+                
+                saved_images.append({
+                    "image_id": image_id,
+                    "draft_id": draft_id,
+                    "prompt": "Original source image",
+                    "storage_path": url,
+                    "url": url,
+                    "aspect_ratio": "1:1",
+                    "style": "original"
+                })
+            except Exception as e:
+                logger.error(f"Failed to save source image {url}: {e}")
+        
+        return saved_images
     
     async def _fetch_sources(
         self,

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,13 +23,36 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
 
-    const { error } = await signInWithEmail(email);
+    // Check if this is an extension login flow
+    const params = new URLSearchParams(window.location.search);
+    const extensionId = params.get('extensionId');
 
-    if (error) {
-      setError(error.message);
+    if (extensionId) {
+      // Extension flow: include extensionId in the redirect URL
+      // so the auth callback can forward to the extension callback page
+      const supabase = createClient();
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?extensionId=${extensionId}`,
+        },
+      });
+
+      if (otpError) {
+        setError(otpError.message);
+      } else {
+        setSent(true);
+      }
       setLoading(false);
     } else {
-      setSent(true);
+      // Normal login flow
+      const { error } = await signInWithEmail(email);
+
+      if (error) {
+        setError(error.message);
+      } else {
+        setSent(true);
+      }
       setLoading(false);
     }
   };

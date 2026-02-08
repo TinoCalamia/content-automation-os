@@ -13,12 +13,18 @@ supabase>=2.3.0
 # Google AI (for text generation)
 google-generativeai>=0.3.0
 
+# Google GenAI (for Imagen 3 image generation via Gemini API key)
+google-genai>=1.0.0
+
 # Content extraction
 newspaper3k>=0.2.8
 youtube-transcript-api>=0.6.2
 beautifulsoup4>=4.12.0
 lxml>=5.1.0
 httpx>=0.26.0
+
+# Image processing (logo overlay)
+Pillow>=10.0.0
 
 # Utilities
 python-dotenv>=1.0.0

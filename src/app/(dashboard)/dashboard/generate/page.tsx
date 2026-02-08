@@ -2,15 +2,17 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -34,6 +36,11 @@ import {
   Lightbulb,
   Quote,
   Minus,
+  PenLine,
+  Search,
+  ImagePlus,
+  Images,
+  Check,
 } from 'lucide-react';
 import type { Source, Draft } from '@/types/database';
 import { toast } from 'sonner';
@@ -52,6 +59,7 @@ const angles = [
   { id: 'framework', label: 'Framework', description: 'Introduce a mental model' },
   { id: 'story', label: 'Story', description: 'Narrative-driven content' },
   { id: 'tip', label: 'Quick Tip', description: 'Actionable advice' },
+  { id: 'slay', label: 'SLAY', description: 'Story → Lesson → Action → You' },
 ];
 
 const imageStyles = [
@@ -73,8 +81,15 @@ export default function GeneratePage() {
   const [selectedAngle, setSelectedAngle] = useState('auto');
   const [selectedImageStyles, setSelectedImageStyles] = useState<string[]>(['infographic', 'comparison']);
   const [generateImages, setGenerateImages] = useState(true);
+  const [imageSourceMode, setImageSourceMode] = useState<'generate' | 'original'>('generate');
+  const [selectedSourceImages, setSelectedSourceImages] = useState<string[]>([]);
   const [generating, setGenerating] = useState(false);
   const [results, setResults] = useState<{ platform: string; draftId: string }[]>([]);
+  // Content input mode: 'sources' (from library) or 'custom' (write your own)
+  const [inputMode, setInputMode] = useState<'sources' | 'custom'>('sources');
+  const [customText, setCustomText] = useState('');
+  // Source search
+  const [sourceSearch, setSourceSearch] = useState('');
 
   const fetchSources = useCallback(async () => {
     if (!currentWorkspace) return;
@@ -85,7 +100,7 @@ export default function GeneratePage() {
       const data = await response.json();
 
       if (data.success) {
-        setSources(data.data.sources.slice(0, 10)); // Get top 10 recent enriched sources
+        setSources(data.data.sources);
       }
     } catch (error) {
       logger.error('Failed to fetch sources', { error });
@@ -97,6 +112,49 @@ export default function GeneratePage() {
   useEffect(() => {
     fetchSources();
   }, [fetchSources]);
+
+  // Filter sources based on search query
+  const filteredSources = useMemo(() => {
+    if (!sourceSearch.trim()) return sources;
+    const query = sourceSearch.toLowerCase();
+    return sources.filter((source) => {
+      const title = (source.title || '').toLowerCase();
+      const summary = (source.summary || '').toLowerCase();
+      return title.includes(query) || summary.includes(query);
+    });
+  }, [sources, sourceSearch]);
+
+  // Compute available images from selected sources
+  const availableSourceImages = useMemo(() => {
+    if (inputMode !== 'sources' || selectedSources.length === 0) return [];
+    return sources
+      .filter((s) => selectedSources.includes(s.id) && s.thumbnail_url)
+      .map((s) => ({
+        sourceId: s.id,
+        url: s.thumbnail_url!,
+        title: s.title || 'Untitled',
+      }));
+  }, [sources, selectedSources, inputMode]);
+
+  // Reset selected source images when available images change
+  useEffect(() => {
+    setSelectedSourceImages((prev) =>
+      prev.filter((url) => availableSourceImages.some((img) => img.url === url))
+    );
+  }, [availableSourceImages]);
+
+  // Auto-switch to generate mode if no source images available
+  useEffect(() => {
+    if (imageSourceMode === 'original' && availableSourceImages.length === 0) {
+      setImageSourceMode('generate');
+    }
+  }, [availableSourceImages, imageSourceMode]);
+
+  const toggleSourceImage = (url: string) => {
+    setSelectedSourceImages((prev) =>
+      prev.includes(url) ? prev.filter((u) => u !== url) : [...prev, url]
+    );
+  };
 
   const togglePlatform = (platformId: string) => {
     setSelectedPlatforms((prev) =>
@@ -146,11 +204,16 @@ export default function GeneratePage() {
           body: JSON.stringify({
             workspace_id: currentWorkspace.id,
             platform,
-            source_ids: selectedSources.length > 0 ? selectedSources : undefined,
+            source_ids: inputMode === 'sources' && selectedSources.length > 0 ? selectedSources : undefined,
+            custom_text: inputMode === 'custom' && customText.trim() ? customText.trim() : undefined,
             angle: selectedAngle !== 'auto' ? selectedAngle : undefined,
             generate_images: generateImages,
-            image_styles: generateImages ? selectedImageStyles : undefined,
+            image_source: generateImages ? imageSourceMode : 'generate',
+            image_styles: generateImages && imageSourceMode === 'generate' ? selectedImageStyles : undefined,
             image_aspect_ratio: '1:1',
+            source_image_urls: generateImages && imageSourceMode === 'original' && selectedSourceImages.length > 0
+              ? selectedSourceImages
+              : undefined,
           }),
         });
 
@@ -166,7 +229,11 @@ export default function GeneratePage() {
       const generatedResults = await Promise.all(generationPromises);
       setResults(generatedResults);
 
-      const imageCount = generateImages ? generatedResults.length * selectedImageStyles.length : 0;
+      const imageCount = generateImages
+        ? imageSourceMode === 'original'
+          ? selectedSourceImages.length
+          : generatedResults.length * selectedImageStyles.length
+        : 0;
       toast.success('Content generated!', {
         description: `Created ${generatedResults.length} draft(s)${imageCount > 0 ? ` with ${imageCount} images` : ''}`,
       });
@@ -245,22 +312,24 @@ export default function GeneratePage() {
             </CardContent>
           </Card>
 
-          {/* Image Style Selection */}
+          {/* Image Selection */}
           <Card className="bg-card/50 border-border/50">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Image className="h-5 w-5" />
-                    Image Generation
+                    Images
                   </CardTitle>
                   <CardDescription>
-                    Generate {selectedImageStyles.length} on-brand images per draft
+                    {imageSourceMode === 'generate'
+                      ? `Generate ${selectedImageStyles.length} on-brand images per draft`
+                      : `Use ${selectedSourceImages.length || 0} image${selectedSourceImages.length !== 1 ? 's' : ''} from your sources`}
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
                   <Label htmlFor="generate-images" className="text-sm text-muted-foreground">
-                    Generate Images
+                    Include Images
                   </Label>
                   <Checkbox
                     id="generate-images"
@@ -271,85 +340,247 @@ export default function GeneratePage() {
               </div>
             </CardHeader>
             {generateImages && (
-              <CardContent>
-                <p className="text-sm text-muted-foreground mb-3">
-                  Select 1-3 image styles to generate (images follow your brand guidelines):
-                </p>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  {imageStyles.map((style) => {
-                    const isSelected = selectedImageStyles.includes(style.id);
-                    const StyleIcon = style.icon;
-                    return (
-                      <Button
-                        key={style.id}
-                        variant={isSelected ? 'default' : 'outline'}
-                        size="sm"
-                        className={`h-auto py-3 flex flex-col items-center gap-1 ${
-                          isSelected ? '' : 'bg-card/50'
-                        }`}
-                        onClick={() => toggleImageStyle(style.id)}
-                      >
-                        <StyleIcon className="h-4 w-4" />
-                        <span className="text-xs font-medium">{style.label}</span>
-                        <span className="text-[10px] text-muted-foreground">{style.description}</span>
-                      </Button>
-                    );
-                  })}
+              <CardContent className="space-y-4">
+                {/* Image source mode toggle */}
+                <div className="flex gap-2">
+                  <Button
+                    variant={imageSourceMode === 'generate' ? 'default' : 'outline'}
+                    size="sm"
+                    className={imageSourceMode === 'generate' ? '' : 'bg-card/50'}
+                    onClick={() => setImageSourceMode('generate')}
+                  >
+                    <ImagePlus className="mr-2 h-4 w-4" />
+                    Generate New
+                  </Button>
+                  <Button
+                    variant={imageSourceMode === 'original' ? 'default' : 'outline'}
+                    size="sm"
+                    className={imageSourceMode === 'original' ? '' : 'bg-card/50'}
+                    onClick={() => setImageSourceMode('original')}
+                    disabled={availableSourceImages.length === 0}
+                  >
+                    <Images className="mr-2 h-4 w-4" />
+                    From Sources
+                    {availableSourceImages.length > 0 && (
+                      <Badge variant="secondary" className="ml-2 text-[10px] px-1.5">
+                        {availableSourceImages.length}
+                      </Badge>
+                    )}
+                  </Button>
                 </div>
+
+                {imageSourceMode === 'generate' ? (
+                  /* AI Image style selection */
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Select 1-3 image styles to generate (images follow your brand guidelines):
+                    </p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {imageStyles.map((style) => {
+                        const isSelected = selectedImageStyles.includes(style.id);
+                        const StyleIcon = style.icon;
+                        return (
+                          <Button
+                            key={style.id}
+                            variant={isSelected ? 'default' : 'outline'}
+                            size="sm"
+                            className={`h-auto py-3 flex flex-col items-center gap-1 ${
+                              isSelected ? '' : 'bg-card/50'
+                            }`}
+                            onClick={() => toggleImageStyle(style.id)}
+                          >
+                            <StyleIcon className="h-4 w-4" />
+                            <span className="text-xs font-medium">{style.label}</span>
+                            <span className="text-[10px] text-muted-foreground">{style.description}</span>
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  /* Original source image selection */
+                  <div>
+                    {availableSourceImages.length === 0 ? (
+                      <div className="text-center py-6 text-muted-foreground">
+                        <Images className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                        <p className="text-sm">
+                          No images available from selected sources.
+                        </p>
+                        <p className="text-xs mt-1">
+                          Select sources that have thumbnail images, or switch to &quot;Generate New&quot;.
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-3">
+                          Pick which source images to use with your draft:
+                        </p>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                          {availableSourceImages.map((img) => {
+                            const isSelected = selectedSourceImages.includes(img.url);
+                            return (
+                              <div
+                                key={img.url}
+                                className={`relative rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${
+                                  isSelected
+                                    ? 'border-primary ring-2 ring-primary/20'
+                                    : 'border-border/50 hover:border-border'
+                                }`}
+                                onClick={() => toggleSourceImage(img.url)}
+                              >
+                                <div className="aspect-video bg-muted">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={img.url}
+                                    alt={img.title}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = 'none';
+                                    }}
+                                  />
+                                </div>
+                                <div className="p-2">
+                                  <p className="text-xs font-medium truncate">{img.title}</p>
+                                </div>
+                                {isSelected && (
+                                  <div className="absolute top-2 right-2 h-5 w-5 rounded-full bg-primary flex items-center justify-center">
+                                    <Check className="h-3 w-3 text-primary-foreground" />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             )}
           </Card>
 
-          {/* Source Selection */}
+          {/* Content Input Mode */}
           <Card className="bg-card/50 border-border/50">
             <CardHeader>
-              <CardTitle className="text-lg">Select Sources (Optional)</CardTitle>
+              <CardTitle className="text-lg">Content Input</CardTitle>
               <CardDescription>
-                Choose specific sources to use, or leave empty to auto-select
+                Choose how to provide content for generation
               </CardDescription>
+              <div className="flex gap-2 pt-2">
+                <Button
+                  variant={inputMode === 'sources' ? 'default' : 'outline'}
+                  size="sm"
+                  className={inputMode === 'sources' ? '' : 'bg-card/50'}
+                  onClick={() => setInputMode('sources')}
+                >
+                  <Library className="mr-2 h-4 w-4" />
+                  From Sources
+                </Button>
+                <Button
+                  variant={inputMode === 'custom' ? 'default' : 'outline'}
+                  size="sm"
+                  className={inputMode === 'custom' ? '' : 'bg-card/50'}
+                  onClick={() => setInputMode('custom')}
+                >
+                  <PenLine className="mr-2 h-4 w-4" />
+                  Custom Text
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              {loadingSources ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : sources.length === 0 ? (
-                <div className="text-center py-8">
-                  <Library className="h-8 w-8 mx-auto text-muted-foreground/30 mb-2" />
-                  <p className="text-sm text-muted-foreground mb-4">
-                    No enriched sources yet. Add and enrich sources first.
+              {inputMode === 'custom' ? (
+                <div className="space-y-2">
+                  <Label htmlFor="custom-text">Your Content / Idea</Label>
+                  <Textarea
+                    id="custom-text"
+                    placeholder="Write your thoughts, ideas, or key points here. The AI will transform this into platform-optimized content..."
+                    value={customText}
+                    onChange={(e) => setCustomText(e.target.value)}
+                    rows={6}
+                    className="resize-y"
+                    disabled={generating}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {customText.length > 0
+                      ? `${customText.length} characters`
+                      : 'Tip: Include key points, insights, or a rough draft and the AI will polish it'}
                   </p>
-                  <Button variant="outline" onClick={() => router.push('/dashboard/library')}>
-                    Go to Library
-                  </Button>
                 </div>
               ) : (
-                <ScrollArea className="h-[200px]">
-                  <div className="space-y-2">
-                    {sources.map((source) => (
-                      <div
-                        key={source.id}
-                        className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50 cursor-pointer"
-                        onClick={() => toggleSource(source.id)}
-                      >
-                        <Checkbox
-                          checked={selectedSources.includes(source.id)}
-                          onCheckedChange={() => toggleSource(source.id)}
+                <>
+                  {loadingSources ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : sources.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Library className="h-8 w-8 mx-auto text-muted-foreground/30 mb-2" />
+                      <p className="text-sm text-muted-foreground mb-4">
+                        No enriched sources yet. Add and enrich sources first.
+                      </p>
+                      <Button variant="outline" onClick={() => router.push('/dashboard/library')}>
+                        Go to Library
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {/* Search bar */}
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search sources..."
+                          value={sourceSearch}
+                          onChange={(e) => setSourceSearch(e.target.value)}
+                          className="pl-9"
                         />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {source.title || 'Untitled'}
-                          </p>
-                          {source.summary && (
-                            <p className="text-xs text-muted-foreground line-clamp-2">
-                              {source.summary}
+                      </div>
+                      {/* Source count */}
+                      {sourceSearch.trim() && (
+                        <p className="text-xs text-muted-foreground">
+                          Showing {filteredSources.length} of {sources.length} sources
+                        </p>
+                      )}
+                      {selectedSources.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {selectedSources.length} source{selectedSources.length > 1 ? 's' : ''} selected
+                        </p>
+                      )}
+                      {/* Source list */}
+                      <ScrollArea className="h-[280px]">
+                        <div className="space-y-2">
+                          {filteredSources.length === 0 ? (
+                            <p className="text-sm text-muted-foreground text-center py-4">
+                              No sources match your search
                             </p>
+                          ) : (
+                            filteredSources.map((source) => (
+                              <div
+                                key={source.id}
+                                className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50 cursor-pointer"
+                                onClick={() => toggleSource(source.id)}
+                              >
+                                <Checkbox
+                                  checked={selectedSources.includes(source.id)}
+                                  onCheckedChange={() => toggleSource(source.id)}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate">
+                                    {source.title || 'Untitled'}
+                                  </p>
+                                  {source.summary && (
+                                    <p className="text-xs text-muted-foreground line-clamp-2">
+                                      {source.summary}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            ))
                           )}
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
+                      </ScrollArea>
+                    </div>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>
@@ -419,6 +650,7 @@ export default function GeneratePage() {
                 onClick={() => {
                   setResults([]);
                   setSelectedSources([]);
+                  setCustomText('');
                 }}
               >
                 Generate More

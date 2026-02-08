@@ -6,6 +6,9 @@ from typing import Literal, Optional, List
 # Image style type for generation
 ImageStyle = Literal["infographic", "comparison", "flow", "concept", "quote", "minimal"]
 
+# Image source mode: generate new AI images or use original images from sources
+ImageSourceMode = Literal["generate", "original"]
+
 
 class GenerateRequest(BaseModel):
     """Request to generate content drafts."""
@@ -13,16 +16,25 @@ class GenerateRequest(BaseModel):
     workspace_id: str = Field(..., description="Workspace ID")
     platform: Literal["linkedin", "x"] = Field(..., description="Target platform")
     source_ids: Optional[List[str]] = Field(None, description="Specific source IDs to use")
+    custom_text: Optional[str] = Field(None, description="Custom text input to generate from (instead of sources)")
     angle: Optional[str] = Field(None, description="Content angle (contrarian, how-to, etc.)")
-    # Image generation options
-    generate_images: bool = Field(True, description="Whether to generate images")
+    # Image options
+    generate_images: bool = Field(True, description="Whether to include images")
+    image_source: ImageSourceMode = Field(
+        "generate",
+        description="Image source mode: 'generate' for AI-generated, 'original' for source images"
+    )
     image_styles: Optional[List[ImageStyle]] = Field(
         None,
-        description="Image styles to generate (default: infographic, comparison)"
+        description="Image styles to generate (only used when image_source='generate')"
     )
     image_aspect_ratio: Literal["1:1", "16:9", "9:16", "4:5"] = Field(
         "1:1",
-        description="Aspect ratio for generated images"
+        description="Aspect ratio for generated images (only used when image_source='generate')"
+    )
+    source_image_urls: Optional[List[str]] = Field(
+        None,
+        description="Original image URLs from sources (only used when image_source='original')"
     )
 
 

@@ -61,5 +61,8 @@ ENV/
 *.swo
 *~
 
+# Google Cloud service account keys
+gcp-service-account*.json
+
 # Supabase
 supabase/.temp/

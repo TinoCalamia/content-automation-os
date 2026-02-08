@@ -103,10 +103,13 @@ async def generate_content(
             workspace_id=request.workspace_id,
             platform=request.platform,
             source_ids=request.source_ids,
+            custom_text=request.custom_text,
             angle=request.angle,
-            generate_images=request.generate_images if hasattr(request, 'generate_images') else True,
-            image_styles=request.image_styles if hasattr(request, 'image_styles') else None,
-            image_aspect_ratio=request.image_aspect_ratio if hasattr(request, 'image_aspect_ratio') else "1:1"
+            generate_images=request.generate_images,
+            image_source=request.image_source,
+            image_styles=request.image_styles,
+            image_aspect_ratio=request.image_aspect_ratio,
+            source_image_urls=request.source_image_urls
         )
         
         # Build response with images if generated

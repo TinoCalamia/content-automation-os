@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Content Hub</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Loading state -->
+    <div id="loading-view" class="view">
+      <div class="spinner"></div>
+    </div>
+
+    <!-- Not connected state -->
+    <div id="connect-view" class="view hidden">
+      <div class="header">
+        <div class="logo">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+          </svg>
+        </div>
+        <h1>Content Hub</h1>
+        <p class="subtitle">Save links and content to your library</p>
+      </div>
+      <button id="connect-btn" class="btn btn-primary">
+        Connect Account
+      </button>
+    </div>
+
+    <!-- Connected / Save state -->
+    <div id="save-view" class="view hidden">
+      <div class="page-info">
+        <img id="page-favicon" class="favicon" src="" alt="" />
+        <div class="page-details">
+          <div id="page-title" class="page-title">Page Title</div>
+          <div id="page-url" class="page-url">https://example.com</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="tags-input">Tags (optional)</label>
+        <div class="tags-container">
+          <div id="tags-list" class="tags-list"></div>
+          <input type="text" id="tags-input" placeholder="Add tag and press Enter" />
+        </div>
+      </div>
+
+      <button id="save-btn" class="btn btn-primary">
+        <span id="save-btn-text">Save to Library</span>
+        <span id="save-btn-loading" class="hidden">
+          <span class="spinner-small"></span>
+          Saving...
+        </span>
+      </button>
+
+      <button id="disconnect-btn" class="btn btn-link">
+        Disconnect
+      </button>
+    </div>
+
+    <!-- Success state -->
+    <div id="success-view" class="view hidden">
+      <div class="success-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+          <polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+      </div>
+      <h2>Saved!</h2>
+      <p class="subtitle">Source added to your library</p>
+      <a id="view-dashboard-link" href="#" class="btn btn-secondary" target="_blank">
+        View in Dashboard
+      </a>
+    </div>
+
+    <!-- Error state -->
+    <div id="error-view" class="view hidden">
+      <div class="error-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="15" y1="9" x2="9" y2="15"/>
+          <line x1="9" y1="9" x2="15" y2="15"/>
+        </svg>
+      </div>
+      <h2>Error</h2>
+      <p id="error-message" class="subtitle error-text">Something went wrong</p>
+      <button id="retry-btn" class="btn btn-primary">
+        Try Again
+      </button>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

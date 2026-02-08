@@ -37,12 +37,12 @@ if settings.gemini_api_key:
     except Exception as e:
         logger.warning(f"Could not initialize Gemini: {e}")
 
-# Check for OpenAI API key (required for image generation)
-openai_configured = bool(settings.openai_api_key)
-if openai_configured:
-    logger.info("OpenAI DALL-E configured for image generation")
+# Check that Gemini API key is set (used for both prompt gen and Imagen)
+imagen_configured = bool(settings.gemini_api_key)
+if imagen_configured:
+    logger.info("Imagen configured via Gemini API key")
 else:
-    logger.warning("OPENAI_API_KEY not set - image generation will fail")
+    logger.warning("GEMINI_API_KEY not set - image generation will fail")
 
 # Create FastAPI app
 app = FastAPI(title="Image Generation API", version="1.0.0")
@@ -90,8 +90,8 @@ async def generate_image(
     """
     await get_authenticated_user(authorization)
     
-    if not openai_configured:
-        raise HTTPException(status_code=500, detail="Image generation not configured - OPENAI_API_KEY required")
+    if not imagen_configured:
+        raise HTTPException(status_code=500, detail="Image generation not configured - GEMINI_API_KEY required")
     
     try:
         logger.info(f"Generating {request.style} image for draft {request.draft_id}")
@@ -138,8 +138,8 @@ async def generate_batch_images(
     """
     await get_authenticated_user(authorization)
     
-    if not openai_configured:
-        raise HTTPException(status_code=500, detail="Image generation not configured - OPENAI_API_KEY required")
+    if not imagen_configured:
+        raise HTTPException(status_code=500, detail="Image generation not configured - GEMINI_API_KEY required")
     
     try:
         logger.info(f"Generating {request.count} images for draft {request.draft_id} with styles: {request.styles}")
@@ -190,8 +190,8 @@ async def regenerate_image(
     """Regenerate an existing image with the same settings."""
     await get_authenticated_user(authorization)
     
-    if not openai_configured:
-        raise HTTPException(status_code=500, detail="Image generation not configured - OPENAI_API_KEY required")
+    if not imagen_configured:
+        raise HTTPException(status_code=500, detail="Image generation not configured - GEMINI_API_KEY required")
     
     try:
         logger.info(f"Regenerating image {image_id}")

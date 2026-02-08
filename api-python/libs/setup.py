@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     cron_secret: str = ""
     log_level: str = "INFO"
     
-    # OpenAI for image generation
+    # OpenAI for image generation (legacy, kept for backward compatibility)
     openai_api_key: str = ""
     
     model_config = {

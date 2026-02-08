@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Content Hub Saver",
+  "version": "1.0.0",
+  "description": "Save links and content to your Content Automation Hub library",
+  "permissions": [
+    "activeTab",
+    "contextMenus",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:3000/*"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "Save to Content Hub"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "save-to-hub": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "Save current page to Content Hub"
+    }
+  },
+  "externally_connectable": {
+    "matches": [
+      "http://localhost/*"
+    ]
+  }
+}

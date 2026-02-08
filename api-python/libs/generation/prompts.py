@@ -24,7 +24,7 @@ Analyze the sources and plan a post. Consider:
 
 Respond in JSON format:
 {{
-    "selected_angle": "contrarian|how-to|lesson|framework|story|tip",
+    "selected_angle": "contrarian|how-to|lesson|framework|story|tip|slay",
     "main_insight": "The core insight to share",
     "key_points": ["Point 1", "Point 2", "Point 3"],
     "suggested_hook": "Opening line idea",
@@ -51,6 +51,14 @@ LINKEDIN_WRITER_PROMPT = """You are an expert LinkedIn content writer.
 - 0-5 hashtags at the very end
 - Avoid engagement bait ("Comment YES if...")
 - Be value-dense and specific, not generic
+
+## SLAY Framework (use when angle is "slay")
+If the selected_angle is "slay", structure the post following this exact flow:
+1. **Story** — Start with a personal insight, anecdote, or relatable moment
+2. **Lesson** — State the problem or key lesson clearly
+3. **Actionable advice** — Give concrete, actionable steps (use bullet points or numbered lists)
+4. **You** — Turn it back to the reader. Address them directly with "you". Make it about them.
+Use short paragraphs, line breaks between sections, and a conversational tone.
 
 ## Example High-Performing Posts
 {example_posts}
@@ -89,6 +97,15 @@ X_WRITER_PROMPT = """You are an expert X/Twitter content writer.
 - Minimal hashtags (0-2 max)
 - Fewer emojis than LinkedIn
 - Optimize for replies and bookmarks
+
+## SLAY Framework (use when angle is "slay")
+If the selected_angle is "slay", structure the post/thread following this flow:
+1. **Story** — Start with a personal insight or hook
+2. **Lesson** — State the problem or key lesson
+3. **Actionable advice** — Give concrete steps (works great as a thread)
+4. **You** — Turn it back to the reader. Address them directly.
+For single posts: compress the SLAY flow into one punchy post.
+For threads: dedicate one tweet per section of the SLAY framework.
 
 ## Example High-Performing Posts
 {example_posts}
@@ -247,23 +264,3 @@ Respond in JSON format:
     ]
 }}"""
 
-IMAGE_BRIEF_PROMPT = """Create an image generation prompt for this post.
-
-Post content:
-{content}
-
-Brand guidelines:
-{brand_guidelines}
-
-Create a prompt that:
-- Captures the post's core message visually
-- Follows brand color/style guidelines
-- Works as a thumbnail/preview image
-- Is specific and detailed
-
-Respond in JSON format:
-{{
-    "image_prompt": "Detailed image generation prompt...",
-    "style_notes": "Style guidance for the image",
-    "composition": "Description of layout/composition"
-}}"""

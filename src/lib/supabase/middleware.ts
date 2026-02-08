@@ -55,6 +55,22 @@ export async function updateSession(request: NextRequest) {
 
   // Redirect authenticated users away from auth pages
   if (isAuthRoute && user) {
+    // If this is an extension login flow and user is already authenticated,
+    // skip the login page and go straight to the extension callback
+    const extensionId = request.nextUrl.searchParams.get('extensionId');
+    if (extensionId && request.nextUrl.pathname === '/auth/login') {
+      const url = request.nextUrl.clone();
+      url.pathname = '/auth/extension-callback';
+      url.searchParams.delete('redirect');
+      // extensionId is already in searchParams, so it carries over
+      return NextResponse.redirect(url);
+    }
+
+    // Allow the extension callback page through (it needs to run client-side)
+    if (request.nextUrl.pathname === '/auth/extension-callback') {
+      return supabaseResponse;
+    }
+
     const url = request.nextUrl.clone();
     const redirect = url.searchParams.get('redirect') || '/dashboard';
     url.pathname = redirect;
