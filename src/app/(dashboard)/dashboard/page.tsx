@@ -15,6 +15,7 @@ import {
   TrendingUp,
   Clock,
   Sparkles,
+  Target,
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -48,6 +49,13 @@ export default function DashboardPage() {
       icon: FileText,
       href: '/dashboard/kb',
       color: 'text-purple-500',
+    },
+    {
+      title: 'Content Strategy',
+      description: 'Analyze your funnel & get AI recommendations',
+      icon: Target,
+      href: '/dashboard/strategy',
+      color: 'text-rose-500',
     },
   ];
 
@@ -106,7 +114,7 @@ export default function DashboardPage() {
       {/* Quick Actions */}
       <div className="space-y-4">
         <h2 className="text-xl font-semibold tracking-tight">Quick Actions</h2>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           {quickActions.map((action) => (
             <Card
               key={action.href}
@@ -133,8 +141,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Recent Activity / Getting Started */}
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* Recent Activity / Getting Started / Strategy */}
+      <div className="grid gap-4 md:grid-cols-3">
         <Card className="bg-card/50 border-border/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -156,6 +164,51 @@ export default function DashboardPage() {
                 </Link>
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Content Strategy Widget */}
+        <Card className="bg-card/50 border-border/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="h-5 w-5 text-muted-foreground" />
+              Content Strategy
+            </CardTitle>
+            <CardDescription>Your funnel health at a glance</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-blue-500" />
+                  <span>TOFU</span>
+                  <span className="text-xs text-muted-foreground">Awareness</span>
+                </div>
+                <span className="text-xs text-muted-foreground">~40% ideal</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-amber-500" />
+                  <span>MOFU</span>
+                  <span className="text-xs text-muted-foreground">Consideration</span>
+                </div>
+                <span className="text-xs text-muted-foreground">~40% ideal</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                  <span>BOFU</span>
+                  <span className="text-xs text-muted-foreground">Conversion</span>
+                </div>
+                <span className="text-xs text-muted-foreground">~20% ideal</span>
+              </div>
+            </div>
+            <Button asChild variant="outline" className="w-full" size="sm">
+              <Link href="/dashboard/strategy">
+                View Strategy
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
           </CardContent>
         </Card>
 

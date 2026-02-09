@@ -18,6 +18,39 @@ class GenerateRequest(BaseModel):
     source_ids: Optional[List[str]] = Field(None, description="Specific source IDs to use")
     custom_text: Optional[str] = Field(None, description="Custom text input to generate from (instead of sources)")
     angle: Optional[str] = Field(None, description="Content angle (contrarian, how-to, etc.)")
+    funnel_stage: Optional[Literal["tofu", "mofu", "bofu"]] = Field(
+        None, description="Target funnel stage (auto-detected if not provided)"
+    )
+    # Image options
+    generate_images: bool = Field(True, description="Whether to include images")
+    image_source: ImageSourceMode = Field(
+        "generate",
+        description="Image source mode: 'generate' for AI-generated, 'original' for source images"
+    )
+    image_styles: Optional[List[ImageStyle]] = Field(
+        None,
+        description="Image styles to generate (only used when image_source='generate')"
+    )
+    image_aspect_ratio: Literal["1:1", "16:9", "9:16", "4:5"] = Field(
+        "1:1",
+        description="Aspect ratio for generated images (only used when image_source='generate')"
+    )
+    source_image_urls: Optional[List[str]] = Field(
+        None,
+        description="Original image URLs from sources (only used when image_source='original')"
+    )
+
+
+class GenerateMultiPlatformRequest(BaseModel):
+    """Request to generate content for multiple platforms with shared images."""
+    
+    workspace_id: str = Field(..., description="Workspace ID")
+    platforms: List[Literal["linkedin", "x"]] = Field(
+        ..., description="Target platforms (images generated once, shared across all)"
+    )
+    source_ids: Optional[List[str]] = Field(None, description="Specific source IDs to use")
+    custom_text: Optional[str] = Field(None, description="Custom text input to generate from (instead of sources)")
+    angle: Optional[str] = Field(None, description="Content angle (contrarian, how-to, etc.)")
     # Image options
     generate_images: bool = Field(True, description="Whether to include images")
     image_source: ImageSourceMode = Field(
@@ -63,7 +96,26 @@ class GenerationResult(BaseModel):
     variants: List[DraftVariant] = Field(default_factory=list, description="Alternative variants")
     hashtags: List[str] = Field(default_factory=list, description="Suggested hashtags")
     source_ids: List[str] = Field(default_factory=list, description="Source IDs used")
+    funnel_stage: Optional[str] = Field(None, description="Classified funnel stage")
     image_id: Optional[str] = Field(None, description="Generated image ID if any")
+
+
+class PlatformDraftResult(BaseModel):
+    """Result of content generation for a single platform within a multi-platform run."""
+    
+    draft_id: str = Field(..., description="Created draft ID")
+    platform: str = Field(..., description="Target platform")
+    content: str = Field(..., description="Selected/primary content")
+    variants: List[DraftVariant] = Field(default_factory=list, description="Alternative variants")
+    hashtags: List[str] = Field(default_factory=list, description="Suggested hashtags")
+    source_ids: List[str] = Field(default_factory=list, description="Source IDs used")
+
+
+class MultiPlatformResult(BaseModel):
+    """Result of multi-platform content generation with shared images."""
+    
+    drafts: List[PlatformDraftResult] = Field(..., description="Generated drafts per platform")
+    image_ids: List[str] = Field(default_factory=list, description="Shared image IDs across all drafts")
 
 
 class DraftResponse(BaseModel):

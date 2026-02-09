@@ -18,7 +18,7 @@ import {
   Trash2,
   Image as ImageIcon,
 } from 'lucide-react';
-import type { Draft } from '@/types/database';
+import type { Draft, FunnelStage } from '@/types/database';
 import { formatDistanceToNow } from 'date-fns';
 
 interface DraftCardProps {
@@ -32,6 +32,12 @@ interface DraftCardProps {
 const platformConfig: Record<string, { icon: React.ElementType; color: string; label: string }> = {
   linkedin: { icon: Linkedin, color: 'text-blue-500', label: 'LinkedIn' },
   x: { icon: Twitter, color: 'text-foreground', label: 'X' },
+};
+
+const funnelStageConfig: Record<FunnelStage, { color: string; bg: string; label: string }> = {
+  tofu: { color: 'text-blue-500', bg: 'bg-blue-500/10', label: 'TOFU' },
+  mofu: { color: 'text-amber-500', bg: 'bg-amber-500/10', label: 'MOFU' },
+  bofu: { color: 'text-emerald-500', bg: 'bg-emerald-500/10', label: 'BOFU' },
 };
 
 export function DraftCard({
@@ -60,10 +66,17 @@ export function DraftCard({
           <div className={`w-8 h-8 rounded-lg bg-muted flex items-center justify-center ${config.color}`}>
             <Icon className="h-4 w-4" />
           </div>
-          <div>
+          <div className="flex items-center gap-1.5">
             <Badge variant="secondary" className="text-xs">
               {config.label}
             </Badge>
+            {draft.funnel_stage && (
+              <Badge
+                className={`text-[10px] border-0 ${funnelStageConfig[draft.funnel_stage].bg} ${funnelStageConfig[draft.funnel_stage].color}`}
+              >
+                {funnelStageConfig[draft.funnel_stage].label}
+              </Badge>
+            )}
           </div>
         </div>
         <DropdownMenu>

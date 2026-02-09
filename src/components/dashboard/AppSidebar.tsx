@@ -37,6 +37,7 @@ import {
   Zap,
   Building2,
   Check,
+  Target,
 } from 'lucide-react';
 
 const navItems = [
@@ -59,6 +60,11 @@ const navItems = [
     title: 'Drafts',
     href: '/dashboard/drafts',
     icon: PenTool,
+  },
+  {
+    title: 'Strategy',
+    href: '/dashboard/strategy',
+    icon: Target,
   },
 ];
 

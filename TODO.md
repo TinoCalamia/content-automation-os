@@ -119,6 +119,64 @@ Build a Chrome extension that allows quickly saving links and content from any w
 
 ---
 
+## 7. Content Strategy & Funnel Analysis
+**Priority:** High
+
+Build a content strategy engine that classifies all drafts/published posts by marketing funnel stage (TOFU, MOFU, BOFU), visualizes the distribution, and uses AI to recommend what type of content to create next for a balanced, high-performing content mix.
+
+### Funnel Stages
+
+| Stage | Label | Description |
+|-------|-------|-------------|
+| **TOFU** | Top of Funnel – Awareness | Thought leadership, hot takes, industry trends, broad educational content. Goal: reach & impressions. |
+| **MOFU** | Middle of Funnel – Consideration | How-tos, frameworks, case studies, comparisons, deep dives. Goal: engagement & trust. |
+| **BOFU** | Bottom of Funnel – Conversion | Product demos, testimonials, CTAs, offers, "DM me" posts. Goal: leads & conversions. |
+
+### Tasks
+
+#### Database & Schema
+- [ ] Add `funnel_stage` enum type (`tofu`, `mofu`, `bofu`) to database
+- [ ] Add `funnel_stage` column to `drafts` table (nullable, to support existing drafts)
+- [ ] Add `funnel_stage` column to `published_posts` table
+- [ ] Add migration for the new columns
+- [ ] Update TypeScript `Draft` and `PublishedPost` types in `src/types/database.ts`
+- [ ] Update Pydantic models in backend
+
+#### AI-Powered Funnel Classification
+- [ ] Create classification prompt that analyzes post content and assigns a funnel stage
+- [ ] Build FastAPI endpoint `POST /api/content-strategy/classify` that classifies a single post
+- [ ] Build batch classification endpoint `POST /api/content-strategy/classify-batch` for existing drafts/posts
+- [ ] Auto-classify new drafts during the generation pipeline (update `GenerationService`)
+- [ ] Allow manual override of funnel stage in the Draft Editor UI
+
+#### Funnel Distribution Dashboard
+- [ ] Create `/dashboard/strategy` page with funnel analysis UI
+- [ ] Build funnel stage distribution chart (bar chart or donut chart showing TOFU/MOFU/BOFU split)
+- [ ] Show breakdown by platform (LinkedIn vs X) per funnel stage
+- [ ] Show breakdown by time period (last 7 days, 30 days, 90 days, all time)
+- [ ] Display list of posts per funnel stage with quick preview
+- [ ] Add funnel stage filter to existing Drafts page
+
+#### AI Content Strategy Recommendations
+- [ ] Build FastAPI endpoint `POST /api/content-strategy/recommend` that:
+  - [ ] Analyzes current funnel distribution across drafts + published posts
+  - [ ] Compares against ideal content mix ratios (e.g., 40% TOFU, 40% MOFU, 20% BOFU)
+  - [ ] Identifies gaps ("You have 0 BOFU posts this month")
+  - [ ] Considers recent performance data (if analytics are available)
+  - [ ] Returns AI-generated recommendations: what to post next, which funnel stage to focus on, suggested angles/topics
+- [ ] Create recommendation UI card on the Strategy dashboard
+- [ ] Add "Generate Recommended" quick action that pre-fills the generation page with the recommended funnel stage and angle
+- [ ] Store content strategy preferences per workspace (ideal ratios, content pillars per stage)
+
+#### Integration with Existing Features
+- [ ] Show funnel stage badge on `DraftCard` component
+- [ ] Add funnel stage selector to the Generate page (user can pick target stage before generating)
+- [ ] Include funnel stage context in generation prompts (`PLANNER_PROMPT`) so AI targets the right stage
+- [ ] Add funnel stage to sidebar navigation under a "Strategy" section
+- [ ] Surface strategy recommendations on the main Dashboard page as a widget
+
+---
+
 ## Notes
 
 - Each feature should be developed incrementally with proper testing

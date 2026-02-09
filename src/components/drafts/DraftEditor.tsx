@@ -10,6 +10,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -35,9 +42,11 @@ import {
   Download,
   ExternalLink,
   ZoomIn,
+  ChevronRight,
+  ChevronDown,
 } from 'lucide-react';
 import { PublishDialog } from '@/components/publish/PublishDialog';
-import type { Draft, GeneratedImage } from '@/types/database';
+import type { Draft, GeneratedImage, FunnelStage } from '@/types/database';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { formatDistanceToNow } from 'date-fns';
@@ -53,6 +62,13 @@ const platformConfig: Record<string, { icon: React.ElementType; color: string; l
   x: { icon: Twitter, color: 'text-foreground', label: 'X', charLimit: 280 },
 };
 
+const funnelStageOptions: { value: FunnelStage | 'none'; label: string; color: string }[] = [
+  { value: 'none', label: 'Not set', color: 'text-muted-foreground' },
+  { value: 'tofu', label: 'TOFU - Awareness', color: 'text-blue-500' },
+  { value: 'mofu', label: 'MOFU - Consideration', color: 'text-amber-500' },
+  { value: 'bofu', label: 'BOFU - Conversion', color: 'text-emerald-500' },
+];
+
 const regenerateActions = [
   { id: 'hook', label: 'New Hook', icon: Sparkles, description: 'Generate a more attention-grabbing opening' },
   { id: 'shorten', label: 'Shorten', icon: Scissors, description: 'Make the post more concise' },
@@ -66,12 +82,14 @@ export function DraftEditor({ draft, onUpdate, onClose }: DraftEditorProps) {
   const { session } = useAuth();
   const [content, setContent] = useState(draft.content_text);
   const [hashtags, setHashtags] = useState(draft.hashtags || []);
+  const [funnelStage, setFunnelStage] = useState<FunnelStage | null>(draft.funnel_stage || null);
   const [loading, setSaving] = useState(false);
   const [regenerating, setRegenerating] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
   const [showPublish, setShowPublish] = useState(false);
   const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(null);
+  const [showPrompt, setShowPrompt] = useState(false);
   const [generatingImages, setGeneratingImages] = useState(false);
 
   const config = platformConfig[draft.platform] || platformConfig.linkedin;
@@ -79,7 +97,8 @@ export function DraftEditor({ draft, onUpdate, onClose }: DraftEditorProps) {
   const hasImages = draft.images && draft.images.length > 0;
 
   const hasChanges = content !== draft.content_text || 
-    JSON.stringify(hashtags) !== JSON.stringify(draft.hashtags);
+    JSON.stringify(hashtags) !== JSON.stringify(draft.hashtags) ||
+    funnelStage !== (draft.funnel_stage || null);
 
   const handleSave = async () => {
     setSaving(true);
@@ -87,7 +106,7 @@ export function DraftEditor({ draft, onUpdate, onClose }: DraftEditorProps) {
       const response = await fetch(`/api/drafts/${draft.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content_text: content, hashtags }),
+        body: JSON.stringify({ content_text: content, hashtags, funnel_stage: funnelStage }),
       });
 
       const data = await response.json();
@@ -292,6 +311,28 @@ export function DraftEditor({ draft, onUpdate, onClose }: DraftEditorProps) {
                 <div className={`absolute bottom-2 right-2 text-xs ${isOverLimit ? 'text-destructive' : 'text-muted-foreground'}`}>
                   {charCount} / {config.charLimit}
                 </div>
+              </div>
+
+              {/* Funnel Stage */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  Funnel Stage
+                </div>
+                <Select
+                  value={funnelStage || 'none'}
+                  onValueChange={(val) => setFunnelStage(val === 'none' ? null : val as FunnelStage)}
+                >
+                  <SelectTrigger className="w-full h-8 text-xs">
+                    <SelectValue placeholder="Not set" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {funnelStageOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        <span className={opt.color}>{opt.label}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Hashtags */}
@@ -503,8 +544,8 @@ export function DraftEditor({ draft, onUpdate, onClose }: DraftEditorProps) {
         />
 
         {/* Image Preview Dialog */}
-        <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
-          <DialogContent className="max-w-2xl">
+        <Dialog open={!!selectedImage} onOpenChange={() => { setSelectedImage(null); setShowPrompt(false); }}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <ImageIcon className="h-5 w-5" />
@@ -527,9 +568,23 @@ export function DraftEditor({ draft, onUpdate, onClose }: DraftEditorProps) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    <span className="font-medium">Prompt:</span> {selectedImage.prompt}
-                  </p>
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setShowPrompt((prev) => !prev)}
+                  >
+                    {showPrompt ? (
+                      <ChevronDown className="h-3 w-3" />
+                    ) : (
+                      <ChevronRight className="h-3 w-3" />
+                    )}
+                    <span className="font-medium">Prompt</span>
+                  </button>
+                  {showPrompt && (
+                    <p className="text-xs text-muted-foreground pl-4 whitespace-pre-wrap break-words">
+                      {selectedImage.prompt}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     <span className="font-medium">Model:</span> {selectedImage.model} • 
                     <span className="font-medium"> Aspect:</span> {selectedImage.aspect_ratio}

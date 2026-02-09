@@ -95,6 +95,24 @@ class GenerationAngle:
         ]
 
 
+class FunnelStage:
+    """Funnel stage constants for content strategy."""
+    
+    TOFU = "tofu"
+    MOFU = "mofu"
+    BOFU = "bofu"
+    
+    LABELS = {
+        "tofu": "Top of Funnel – Awareness",
+        "mofu": "Middle of Funnel – Consideration",
+        "bofu": "Bottom of Funnel – Conversion",
+    }
+    
+    @classmethod
+    def all(cls) -> List[str]:
+        return [cls.TOFU, cls.MOFU, cls.BOFU]
+
+
 class RegenerateAction:
     """Regeneration action constants."""
     

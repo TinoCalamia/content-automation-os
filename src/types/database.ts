@@ -19,6 +19,8 @@ export type GenerationStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
 export type PublishMode = 'api' | 'manual';
 
+export type FunnelStage = 'tofu' | 'mofu' | 'bofu';
+
 export type KBDocumentKey = 
   | 'tone_of_voice'
   | 'brand_guidelines'
@@ -117,6 +119,7 @@ export interface Draft {
   hashtags: string[];
   scheduled_for: string | null;
   source_ids: string[];
+  funnel_stage: FunnelStage | null;
   created_at: string;
   updated_at: string;
   images?: GeneratedImage[];
@@ -152,6 +155,7 @@ export interface PublishedPost {
   external_post_id: string | null;
   published_at: string;
   mode: PublishMode;
+  funnel_stage: FunnelStage | null;
   metrics: {
     impressions?: number;
     likes?: number;

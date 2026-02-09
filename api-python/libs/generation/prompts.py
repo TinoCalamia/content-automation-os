@@ -16,15 +16,24 @@ Brand Guidelines:
 Platform Algorithm Guidelines:
 {platform_guidelines}
 
+{funnel_stage_context}
+
 ## Task
 Analyze the sources and plan a post. Consider:
 1. What's the most compelling angle?
 2. What key insight or value can we share?
 3. What structure works best for this platform?
+4. What marketing funnel stage does this post target?
+
+## Funnel Stage Definitions
+- **tofu** (Top of Funnel – Awareness): Thought leadership, hot takes, industry trends, broad educational content. Goal: reach & impressions.
+- **mofu** (Middle of Funnel – Consideration): How-to guides, frameworks, case studies, comparisons, deep dives. Goal: engagement & trust.
+- **bofu** (Bottom of Funnel – Conversion): Product demos, testimonials, direct CTAs, offers, service descriptions. Goal: leads & conversions.
 
 Respond in JSON format:
 {{
     "selected_angle": "contrarian|how-to|lesson|framework|story|tip|slay",
+    "funnel_stage": "tofu|mofu|bofu",
     "main_insight": "The core insight to share",
     "key_points": ["Point 1", "Point 2", "Point 3"],
     "suggested_hook": "Opening line idea",

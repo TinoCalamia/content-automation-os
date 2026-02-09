@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -62,6 +62,13 @@ const angles = [
   { id: 'slay', label: 'SLAY', description: 'Story → Lesson → Action → You' },
 ];
 
+const funnelStages = [
+  { id: 'auto', label: 'Auto-detect', description: 'Let AI decide the funnel stage', color: 'text-muted-foreground' },
+  { id: 'tofu', label: 'TOFU', description: 'Awareness – broad reach content', color: 'text-blue-500' },
+  { id: 'mofu', label: 'MOFU', description: 'Consideration – trust-building content', color: 'text-amber-500' },
+  { id: 'bofu', label: 'BOFU', description: 'Conversion – action-driving content', color: 'text-emerald-500' },
+];
+
 const imageStyles = [
   { id: 'infographic', label: 'Infographic', description: 'Stats, charts, data viz', icon: BarChart3 },
   { id: 'comparison', label: 'Comparison', description: 'Side-by-side, before/after', icon: GitCompare },
@@ -74,11 +81,13 @@ const imageStyles = [
 export default function GeneratePage() {
   const { currentWorkspace, session } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [sources, setSources] = useState<Source[]>([]);
   const [loadingSources, setLoadingSources] = useState(true);
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['linkedin', 'x']);
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
-  const [selectedAngle, setSelectedAngle] = useState('auto');
+  const [selectedAngle, setSelectedAngle] = useState(searchParams.get('angle') || 'auto');
+  const [selectedFunnelStage, setSelectedFunnelStage] = useState(searchParams.get('funnel_stage') || 'auto');
   const [selectedImageStyles, setSelectedImageStyles] = useState<string[]>(['infographic', 'comparison']);
   const [generateImages, setGenerateImages] = useState(true);
   const [imageSourceMode, setImageSourceMode] = useState<'generate' | 'original'>('generate');
@@ -194,48 +203,47 @@ export default function GeneratePage() {
     const fastApiUrl = process.env.NEXT_PUBLIC_FASTAPI_URL || 'http://localhost:8000';
 
     try {
-      const generationPromises = selectedPlatforms.map(async (platform) => {
-        const response = await fetch(`${fastApiUrl}/api/generation/generate`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify({
-            workspace_id: currentWorkspace.id,
-            platform,
-            source_ids: inputMode === 'sources' && selectedSources.length > 0 ? selectedSources : undefined,
-            custom_text: inputMode === 'custom' && customText.trim() ? customText.trim() : undefined,
+      // Single API call for all platforms — images generated once and shared
+      const response = await fetch(`${fastApiUrl}/api/generation/generate-multi`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          workspace_id: currentWorkspace.id,
+          platforms: selectedPlatforms,
+          source_ids: inputMode === 'sources' && selectedSources.length > 0 ? selectedSources : undefined,
+          custom_text: inputMode === 'custom' && customText.trim() ? customText.trim() : undefined,
             angle: selectedAngle !== 'auto' ? selectedAngle : undefined,
-            generate_images: generateImages,
-            image_source: generateImages ? imageSourceMode : 'generate',
-            image_styles: generateImages && imageSourceMode === 'generate' ? selectedImageStyles : undefined,
-            image_aspect_ratio: '1:1',
-            source_image_urls: generateImages && imageSourceMode === 'original' && selectedSourceImages.length > 0
-              ? selectedSourceImages
-              : undefined,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!data.success) {
-          throw new Error(data.error || `Failed to generate for ${platform}`);
-        }
-
-        return { platform, draftId: data.data.draft_id };
+            funnel_stage: selectedFunnelStage !== 'auto' ? selectedFunnelStage : undefined,
+          generate_images: generateImages,
+          image_source: generateImages ? imageSourceMode : 'generate',
+          image_styles: generateImages && imageSourceMode === 'generate' ? selectedImageStyles : undefined,
+          image_aspect_ratio: '1:1',
+          source_image_urls: generateImages && imageSourceMode === 'original' && selectedSourceImages.length > 0
+            ? selectedSourceImages
+            : undefined,
+        }),
       });
 
-      const generatedResults = await Promise.all(generationPromises);
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to generate content');
+      }
+
+      const generatedResults = (data.data.drafts || []).map(
+        (d: { platform: string; draft_id: string }) => ({
+          platform: d.platform,
+          draftId: d.draft_id,
+        })
+      );
       setResults(generatedResults);
 
-      const imageCount = generateImages
-        ? imageSourceMode === 'original'
-          ? selectedSourceImages.length
-          : generatedResults.length * selectedImageStyles.length
-        : 0;
+      const imageCount = (data.data.image_ids || []).length;
       toast.success('Content generated!', {
-        description: `Created ${generatedResults.length} draft(s)${imageCount > 0 ? ` with ${imageCount} images` : ''}`,
+        description: `Created ${generatedResults.length} draft(s)${imageCount > 0 ? ` with ${imageCount} shared image(s)` : ''}`,
       });
     } catch (error) {
       logger.error('Generation failed', { error });
@@ -312,6 +320,31 @@ export default function GeneratePage() {
             </CardContent>
           </Card>
 
+          {/* Funnel Stage Selection */}
+          <Card className="bg-card/50 border-border/50">
+            <CardHeader>
+              <CardTitle className="text-lg">Target Funnel Stage</CardTitle>
+              <CardDescription>Choose where this content sits in your marketing funnel</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Select value={selectedFunnelStage} onValueChange={setSelectedFunnelStage}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {funnelStages.map((stage) => (
+                    <SelectItem key={stage.id} value={stage.id}>
+                      <div className="flex flex-col">
+                        <span className={stage.color}>{stage.label}</span>
+                        <span className="text-xs text-muted-foreground">{stage.description}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </CardContent>
+          </Card>
+
           {/* Image Selection */}
           <Card className="bg-card/50 border-border/50">
             <CardHeader>
@@ -323,7 +356,7 @@ export default function GeneratePage() {
                   </CardTitle>
                   <CardDescription>
                     {imageSourceMode === 'generate'
-                      ? `Generate ${selectedImageStyles.length} on-brand images per draft`
+                      ? `Generate ${selectedImageStyles.length} on-brand image${selectedImageStyles.length !== 1 ? 's' : ''} (shared across all platforms)`
                       : `Use ${selectedSourceImages.length || 0} image${selectedSourceImages.length !== 1 ? 's' : ''} from your sources`}
                   </CardDescription>
                 </div>

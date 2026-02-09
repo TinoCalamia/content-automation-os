@@ -26,18 +26,7 @@ logger = setup_logging(__name__)
 supabase = init_supabase()
 settings = get_settings()
 
-# Initialize Gemini client (for prompt generation)
-gemini_client = None
-if settings.gemini_api_key:
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=settings.gemini_api_key)
-        gemini_client = genai.GenerativeModel("gemini-2.0-flash")
-        logger.info("Gemini client initialized for prompt generation")
-    except Exception as e:
-        logger.warning(f"Could not initialize Gemini: {e}")
-
-# Check that Gemini API key is set (used for both prompt gen and Imagen)
+# Check that Gemini API key is set (used for Imagen)
 imagen_configured = bool(settings.gemini_api_key)
 if imagen_configured:
     logger.info("Imagen configured via Gemini API key")
@@ -49,7 +38,7 @@ app = FastAPI(title="Image Generation API", version="1.0.0")
 setup_cors(app)
 
 # Initialize service
-image_service = ImageService(gemini_client, supabase)
+image_service = ImageService(supabase)
 
 
 async def get_authenticated_user(

@@ -51,7 +51,7 @@ export async function PATCH(
 
   try {
     const body = await request.json();
-    const { content_text, hashtags, scheduled_for } = body;
+    const { content_text, hashtags, scheduled_for, funnel_stage } = body;
 
     const supabase = await createClient();
 
@@ -59,6 +59,7 @@ export async function PATCH(
     if (content_text !== undefined) updateData.content_text = content_text;
     if (hashtags !== undefined) updateData.hashtags = hashtags;
     if (scheduled_for !== undefined) updateData.scheduled_for = scheduled_for;
+    if (funnel_stage !== undefined) updateData.funnel_stage = funnel_stage;
 
     const { data, error } = await supabase
       .from('drafts')

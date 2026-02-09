@@ -15,6 +15,7 @@ from libs.setup import setup_logging
 from api.enrichment.index import app as enrichment_app
 from api.generation.index import app as generation_app
 from api.images.index import app as images_app
+from api.strategy.index import app as strategy_app
 
 logger = setup_logging(__name__)
 
@@ -44,6 +45,7 @@ app.add_middleware(
 app.mount("/api/enrichment", enrichment_app)
 app.mount("/api/generation", generation_app)
 app.mount("/api/images", images_app)
+app.mount("/api/strategy", strategy_app)
 
 
 @app.get("/")
@@ -55,7 +57,8 @@ async def root():
         "endpoints": {
             "enrichment": "/api/enrichment",
             "generation": "/api/generation",
-            "images": "/api/images"
+            "images": "/api/images",
+            "strategy": "/api/strategy"
         }
     }
 

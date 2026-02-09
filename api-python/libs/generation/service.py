@@ -56,6 +56,7 @@ class GenerationService:
         source_ids: Optional[List[str]] = None,
         custom_text: Optional[str] = None,
         angle: Optional[str] = None,
+        funnel_stage: Optional[str] = None,
         run_id: Optional[str] = None,
         generate_images: bool = True,
         image_source: str = "generate",
@@ -104,7 +105,7 @@ class GenerationService:
         context = await self._fetch_context(workspace_id, platform)
         
         # 3. Run planner pass
-        plan = await self._run_planner(sources, context, platform, angle)
+        plan = await self._run_planner(sources, context, platform, angle, funnel_stage)
         
         # 4. Run writer pass
         variants, hashtags = await self._run_writer(plan, context, platform)
@@ -119,7 +120,12 @@ class GenerationService:
         # 6. Select best variant (for now, just use first)
         selected_content = variants[0]["content"] if variants else ""
         
-        # 7. Save draft to database
+        # 7. Determine funnel stage from plan (or use provided override)
+        detected_funnel_stage = funnel_stage or plan.get("funnel_stage")
+        if detected_funnel_stage not in {"tofu", "mofu", "bofu"}:
+            detected_funnel_stage = None
+        
+        # 8. Save draft to database
         # Filter out synthetic "custom" source ID
         real_source_ids = [s["id"] for s in sources[:3] if s["id"] != "custom"]
         draft_id = await self._save_draft(
@@ -129,10 +135,11 @@ class GenerationService:
             variants=variants,
             hashtags=hashtags,
             source_ids=real_source_ids,
-            run_id=run_id
+            run_id=run_id,
+            funnel_stage=detected_funnel_stage
         )
         
-        # 8. Handle images based on image_source mode
+        # 9. Handle images based on image_source mode
         images = []
         if generate_images:
             if image_source == "original" and source_image_urls:
@@ -168,10 +175,182 @@ class GenerationService:
             "variants": variants,
             "hashtags": hashtags,
             "source_ids": real_source_ids,
+            "funnel_stage": detected_funnel_stage,
             "quality_scores": quality_scores,
             "images": images
         }
     
+    async def generate_multi_platform(
+        self,
+        workspace_id: str,
+        platforms: List[str],
+        source_ids: Optional[List[str]] = None,
+        custom_text: Optional[str] = None,
+        angle: Optional[str] = None,
+        run_id: Optional[str] = None,
+        generate_images: bool = True,
+        image_source: str = "generate",
+        image_styles: Optional[List[str]] = None,
+        image_aspect_ratio: str = "1:1",
+        source_image_urls: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Generate content for multiple platforms with shared images.
+        
+        Images are generated once (using the first platform's draft) and then
+        linked to all subsequent drafts, avoiding duplicate image generation.
+        
+        Args:
+            workspace_id: Workspace ID
+            platforms: List of target platforms (e.g. ["linkedin", "x"])
+            source_ids: Optional specific source IDs to use
+            custom_text: Optional custom text input to generate from
+            angle: Optional content angle
+            run_id: Optional generation run ID
+            generate_images: Whether to include images
+            image_source: 'generate' for AI images, 'original' for source images
+            image_styles: Styles for AI-generated images
+            image_aspect_ratio: Aspect ratio for AI-generated images
+            source_image_urls: Original image URLs when image_source='original'
+            
+        Returns:
+            Dict with drafts list and shared image_ids
+        """
+        if not self.gemini:
+            raise ValueError("Gemini client not configured")
+        
+        if not platforms:
+            raise ValueError("At least one platform is required")
+        
+        # 1. Fetch sources once (shared across all platforms)
+        if custom_text and custom_text.strip():
+            sources = [{
+                "id": "custom",
+                "title": custom_text.strip()[:100],
+                "summary": custom_text.strip(),
+                "key_points": [],
+            }]
+            logger.info("Using custom text input for multi-platform generation")
+        else:
+            sources = await self._fetch_sources(workspace_id, source_ids)
+        
+        if not sources:
+            raise ValueError("No sources available for generation. Provide source IDs or custom text.")
+        
+        real_source_ids = [s["id"] for s in sources[:3] if s["id"] != "custom"]
+        
+        # 2. Generate content for each platform
+        drafts_data = []
+        for platform in platforms:
+            context = await self._fetch_context(workspace_id, platform)
+            plan = await self._run_planner(sources, context, platform, angle)
+            variants, hashtags = await self._run_writer(plan, context, platform)
+            quality_scores = await self._run_quality_check(
+                variants[0]["content"] if variants else "",
+                context,
+                platform
+            )
+            selected_content = variants[0]["content"] if variants else ""
+            
+            draft_id = await self._save_draft(
+                workspace_id=workspace_id,
+                platform=platform,
+                content=selected_content,
+                variants=variants,
+                hashtags=hashtags,
+                source_ids=real_source_ids,
+                run_id=run_id
+            )
+            
+            drafts_data.append({
+                "draft_id": draft_id,
+                "platform": platform,
+                "content": selected_content,
+                "variants": variants,
+                "hashtags": hashtags,
+                "source_ids": real_source_ids,
+                "quality_scores": quality_scores,
+            })
+            logger.info(f"Generated {platform} draft {draft_id}")
+        
+        # 3. Generate images ONCE using the first draft
+        images = []
+        if generate_images and drafts_data:
+            first_draft_id = drafts_data[0]["draft_id"]
+            
+            if image_source == "original" and source_image_urls:
+                images = await self._save_source_images(
+                    workspace_id=workspace_id,
+                    draft_id=first_draft_id,
+                    image_urls=source_image_urls
+                )
+                logger.info(f"Attached {len(images)} original source images to first draft")
+            elif image_source == "generate" and self.image_service:
+                try:
+                    styles = image_styles or DEFAULT_IMAGE_STYLES
+                    logger.info(f"Generating {len(styles)} shared images for {len(platforms)} platforms")
+                    
+                    image_result = await self.image_service.generate_batch_images(
+                        draft_id=first_draft_id,
+                        count=len(styles),
+                        styles=styles,
+                        aspect_ratio=image_aspect_ratio,
+                        include_logo=True
+                    )
+                    images = image_result.get("images", [])
+                    logger.info(f"Generated {len(images)} shared images successfully")
+                except Exception as e:
+                    logger.error(f"Image generation failed (continuing without images): {e}")
+            
+            # 4. Link the same images to all OTHER drafts
+            if images and len(drafts_data) > 1:
+                for draft_data in drafts_data[1:]:
+                    await self._link_images_to_draft(
+                        workspace_id=workspace_id,
+                        draft_id=draft_data["draft_id"],
+                        images=images
+                    )
+                    logger.info(f"Linked {len(images)} shared images to {draft_data['platform']} draft")
+        
+        image_ids = [img.get("image_id") for img in images if img.get("image_id")]
+        
+        return {
+            "drafts": drafts_data,
+            "image_ids": image_ids,
+        }
+    
+    async def _link_images_to_draft(
+        self,
+        workspace_id: str,
+        draft_id: str,
+        images: List[Dict[str, Any]]
+    ) -> None:
+        """
+        Create image records for a draft that share the same storage_path
+        as already-generated images. This avoids re-generating the same image.
+        """
+        if not self.supabase:
+            return
+        
+        now = datetime.now(timezone.utc).isoformat()
+        
+        for img in images:
+            new_image_id = str(uuid.uuid4())
+            try:
+                self.supabase.table("images").insert({
+                    "id": new_image_id,
+                    "workspace_id": workspace_id,
+                    "draft_id": draft_id,
+                    "prompt": img.get("prompt", ""),
+                    "model": img.get("model", "shared"),
+                    "storage_path": img.get("storage_path", ""),
+                    "aspect_ratio": img.get("aspect_ratio", "1:1"),
+                    "style": img.get("style", "infographic"),
+                    "created_at": now
+                }).execute()
+            except Exception as e:
+                logger.error(f"Failed to link image to draft {draft_id}: {e}")
+
     async def regenerate(
         self,
         draft_id: str,
@@ -367,7 +546,8 @@ class GenerationService:
         sources: List[Dict[str, Any]],
         context: Dict[str, str],
         platform: str,
-        angle: Optional[str]
+        angle: Optional[str],
+        funnel_stage: Optional[str] = None
     ) -> Dict[str, Any]:
         """Run the planner pass to decide angle and structure."""
         # Format sources for prompt
@@ -379,12 +559,28 @@ class GenerationService:
             if s.get("key_points"):
                 sources_text += f"Key Points: {', '.join(s['key_points'])}\n"
         
+        # Build funnel stage context
+        funnel_context = ""
+        if funnel_stage:
+            stage_labels = {
+                "tofu": "Top of Funnel – Awareness (broad reach, thought leadership)",
+                "mofu": "Middle of Funnel – Consideration (how-tos, frameworks, deep dives)",
+                "bofu": "Bottom of Funnel – Conversion (CTAs, offers, product mentions)",
+            }
+            funnel_context = (
+                f"## Target Funnel Stage\n"
+                f"The user wants this post to target: **{funnel_stage.upper()}** "
+                f"({stage_labels.get(funnel_stage, '')})\n"
+                f"Tailor the angle, hook, and CTA accordingly."
+            )
+        
         prompt = PLANNER_PROMPT.format(
             platform=platform,
             sources=sources_text,
             tone_of_voice=context.get("tone_of_voice", "Professional and insightful"),
             brand_guidelines=context.get("brand_guidelines", ""),
-            platform_guidelines=context.get("platform_guidelines", "")
+            platform_guidelines=context.get("platform_guidelines", ""),
+            funnel_stage_context=funnel_context
         )
         
         response = self.gemini.generate_content(prompt)
@@ -447,7 +643,8 @@ class GenerationService:
         variants: List[Dict[str, str]],
         hashtags: List[str],
         source_ids: List[str],
-        run_id: Optional[str]
+        run_id: Optional[str],
+        funnel_stage: Optional[str] = None
     ) -> str:
         """Save the generated draft to database."""
         if not self.supabase:
@@ -456,7 +653,7 @@ class GenerationService:
         draft_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         
-        self.supabase.table("drafts").insert({
+        draft_data = {
             "id": draft_id,
             "workspace_id": workspace_id,
             "platform": platform,
@@ -467,7 +664,12 @@ class GenerationService:
             "source_ids": source_ids,
             "created_at": now,
             "updated_at": now
-        }).execute()
+        }
+        
+        if funnel_stage and funnel_stage in {"tofu", "mofu", "bofu"}:
+            draft_data["funnel_stage"] = funnel_stage
+        
+        self.supabase.table("drafts").insert(draft_data).execute()
         
         return draft_id
     

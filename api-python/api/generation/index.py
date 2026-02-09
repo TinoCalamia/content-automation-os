@@ -12,8 +12,11 @@ from libs.setup import bootstrap, init_supabase, setup_cors, setup_logging, get_
 from libs.base_models import ApiResponse
 from libs.generation.models import (
     GenerateRequest,
+    GenerateMultiPlatformRequest,
     RegenerateRequest,
     GenerationResult,
+    MultiPlatformResult,
+    PlatformDraftResult,
     DraftResponse,
 )
 from libs.generation.service import GenerationService
@@ -43,7 +46,7 @@ app = FastAPI(title="Generation API", version="1.0.0")
 setup_cors(app)
 
 # Initialize services
-image_service = ImageService(gemini_client, supabase)
+image_service = ImageService(supabase)
 generation_service = GenerationService(gemini_client, supabase, image_service)
 
 
@@ -105,6 +108,7 @@ async def generate_content(
             source_ids=request.source_ids,
             custom_text=request.custom_text,
             angle=request.angle,
+            funnel_stage=request.funnel_stage,
             generate_images=request.generate_images,
             image_source=request.image_source,
             image_styles=request.image_styles,
@@ -125,6 +129,7 @@ async def generate_content(
                 variants=[{"label": v["label"], "content": v["content"]} for v in result["variants"]],
                 hashtags=result["hashtags"],
                 source_ids=result["source_ids"],
+                funnel_stage=result.get("funnel_stage"),
                 image_id=image_ids[0] if image_ids else None  # Primary image
             ),
             message=f"Content generated successfully with {len(images)} images"
@@ -134,6 +139,72 @@ async def generate_content(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Generation error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Generation failed")
+
+
+@app.post("/generate-multi", response_model=ApiResponse[MultiPlatformResult])
+async def generate_multi_platform(
+    request: GenerateMultiPlatformRequest,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Generate content for multiple platforms with shared images.
+    
+    Images are generated once and linked to all platform drafts,
+    avoiding duplicate image generation when creating for LinkedIn + X.
+    """
+    user = await get_authenticated_user(authorization)
+    
+    if not gemini_client:
+        raise HTTPException(status_code=500, detail="Generation service not configured")
+    
+    try:
+        logger.info(f"Generating multi-platform content for {request.platforms}", extra={
+            "workspace_id": request.workspace_id,
+            "user_id": user.id if user else None
+        })
+        
+        result = await generation_service.generate_multi_platform(
+            workspace_id=request.workspace_id,
+            platforms=request.platforms,
+            source_ids=request.source_ids,
+            custom_text=request.custom_text,
+            angle=request.angle,
+            generate_images=request.generate_images,
+            image_source=request.image_source,
+            image_styles=request.image_styles,
+            image_aspect_ratio=request.image_aspect_ratio,
+            source_image_urls=request.source_image_urls
+        )
+        
+        # Build response
+        draft_results = []
+        for d in result["drafts"]:
+            draft_results.append(PlatformDraftResult(
+                draft_id=d["draft_id"],
+                platform=d["platform"],
+                content=d["content"],
+                variants=[{"label": v["label"], "content": v["content"]} for v in d["variants"]],
+                hashtags=d["hashtags"],
+                source_ids=d["source_ids"],
+            ))
+        
+        image_ids = result.get("image_ids", [])
+        platform_names = ", ".join(request.platforms)
+        
+        return ApiResponse(
+            success=True,
+            data=MultiPlatformResult(
+                drafts=draft_results,
+                image_ids=image_ids,
+            ),
+            message=f"Generated {len(draft_results)} drafts ({platform_names}) with {len(image_ids)} shared images"
+        )
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Multi-platform generation error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Generation failed")
 
 
