@@ -1,6 +1,7 @@
 """Content generation service for creating platform-optimized drafts."""
 
 import json
+import re
 import uuid
 import asyncio
 from datetime import datetime, timezone
@@ -423,6 +424,14 @@ class GenerationService:
                 "content": draft["content_text"]
             }
         
+        # Enforce X character limits on regenerated content
+        if new_content and draft["platform"] == "x":
+            enforced = self._enforce_x_limits(
+                [{"label": action, "content": new_content}]
+            )
+            if enforced:
+                new_content = enforced[0]["content"]
+
         if new_content:
             # Update draft
             self.supabase.table("drafts").update({
@@ -614,7 +623,87 @@ class GenerationService:
         variants = result.get("variants", [])
         hashtags = result.get("suggested_hashtags", [])
         
+        # Enforce character limits for X posts
+        if platform == "x" and variants:
+            variants = self._enforce_x_limits(variants)
+        
         return variants, hashtags
+
+    # ── X / Twitter character-limit enforcement ───────────────────────────
+    X_CHAR_LIMIT = 280
+    THREAD_SEPARATOR = "\n---\n"
+
+    def _enforce_x_limits(
+        self, variants: List[Dict[str, str]]
+    ) -> List[Dict[str, str]]:
+        """Ensure every X variant respects the 280-char-per-tweet limit.
+
+        • Single / Bold tweets that exceed 280 chars are auto-split into a
+          thread (sentences become individual tweets).
+        • Thread variants have each tweet trimmed to 280 chars.
+        """
+        enforced = []
+        for variant in variants:
+            content = variant.get("content", "")
+            label = variant.get("label", "")
+
+            if self.THREAD_SEPARATOR in content:
+                # Already a thread — enforce per-tweet
+                tweets = [t.strip() for t in content.split("---") if t.strip()]
+                tweets = [self._trim_tweet(t) for t in tweets]
+                enforced.append({
+                    "label": label,
+                    "content": self.THREAD_SEPARATOR.join(tweets),
+                })
+            elif len(content) > self.X_CHAR_LIMIT:
+                # Over-limit single tweet → auto-convert to thread
+                logger.info(
+                    f"X variant '{label}' is {len(content)} chars, "
+                    f"converting to thread"
+                )
+                tweets = self._split_into_thread(content)
+                enforced.append({
+                    "label": f"{label} (thread)",
+                    "content": self.THREAD_SEPARATOR.join(tweets),
+                })
+            else:
+                enforced.append(variant)
+        return enforced
+
+    def _trim_tweet(self, text: str) -> str:
+        """Trim a single tweet to 280 chars on a word boundary."""
+        if len(text) <= self.X_CHAR_LIMIT:
+            return text
+        trimmed = text[: self.X_CHAR_LIMIT - 1]
+        last_space = trimmed.rfind(" ")
+        if last_space > self.X_CHAR_LIMIT // 2:
+            trimmed = trimmed[:last_space]
+        return trimmed + "…"
+
+    def _split_into_thread(self, text: str) -> List[str]:
+        """Split long text into ≤280-char tweets, preserving sentences."""
+        # Split on sentence boundaries
+        sentences = re.split(r"(?<=[.!?])\s+", text)
+
+        tweets: List[str] = []
+        current = ""
+        for sentence in sentences:
+            candidate = f"{current} {sentence}".strip() if current else sentence
+            if len(candidate) <= self.X_CHAR_LIMIT:
+                current = candidate
+            else:
+                if current:
+                    tweets.append(current)
+                # If a single sentence exceeds 280, trim it
+                current = self._trim_tweet(sentence)
+        if current:
+            tweets.append(current)
+
+        # Fallback: if nothing was split, hard-chunk
+        if not tweets:
+            tweets = [self._trim_tweet(text)]
+
+        return tweets
     
     async def _run_quality_check(
         self,
@@ -674,14 +763,27 @@ class GenerationService:
         return draft_id
     
     def _parse_json_response(self, text: str) -> Dict[str, Any]:
-        """Parse JSON from LLM response."""
+        """Parse JSON from LLM response.
+
+        Handles invalid control characters (literal newlines, tabs) that
+        Gemini sometimes places inside JSON string values.
+        """
         try:
             # Find JSON in response
             start = text.find("{")
             end = text.rfind("}") + 1
             if start >= 0 and end > start:
                 json_str = text[start:end]
-                return json.loads(json_str)
+                try:
+                    return json.loads(json_str)
+                except json.JSONDecodeError:
+                    # Strip control chars (U+0000–U+001F) except valid
+                    # JSON whitespace (\n, \r, \t) which we replace with
+                    # a space so string values stay readable.
+                    cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", json_str)
+                    # Also escape literal newlines/tabs inside string values
+                    # by doing a strict=False parse
+                    return json.loads(cleaned, strict=False)
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse JSON response: {e}")
         

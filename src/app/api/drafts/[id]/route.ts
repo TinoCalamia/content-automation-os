@@ -55,11 +55,13 @@ export async function PATCH(
 
     const supabase = await createClient();
 
-    const updateData: Record<string, unknown> = {};
+    const updateData: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
     if (content_text !== undefined) updateData.content_text = content_text;
     if (hashtags !== undefined) updateData.hashtags = hashtags;
     if (scheduled_for !== undefined) updateData.scheduled_for = scheduled_for;
-    if (funnel_stage !== undefined) updateData.funnel_stage = funnel_stage;
+    if (funnel_stage) updateData.funnel_stage = funnel_stage;
 
     const { data, error } = await supabase
       .from('drafts')
@@ -69,6 +71,7 @@ export async function PATCH(
       .single();
 
     if (error) {
+      console.error('Supabase error updating draft:', error.code, error.message, error.details);
       return NextResponse.json<ApiResponse>({
         success: false,
         error: error.message,
@@ -85,7 +88,7 @@ export async function PATCH(
     console.error('Error updating draft:', error);
     return NextResponse.json<ApiResponse>({
       success: false,
-      error: 'Failed to update draft',
+      error: error instanceof Error ? error.message : 'Failed to update draft',
     }, { status: 500 });
   }
 }

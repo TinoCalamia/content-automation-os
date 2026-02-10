@@ -201,6 +201,7 @@ export default function DraftsPage() {
       {selectedDraft && (
         <div className="w-[450px] border-l border-border bg-background">
           <DraftEditor
+            key={selectedDraft.id}
             draft={selectedDraft}
             onUpdate={handleUpdate}
             onClose={() => setSelectedDraft(null)}

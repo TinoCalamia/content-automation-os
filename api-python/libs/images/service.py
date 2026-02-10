@@ -231,15 +231,13 @@ class ImageService:
                 style=style,
             )
 
-        # Generate the image
-        image_data = await self._generate_image(image_prompt, aspect_ratio)
+        # Generate the image (pass logo so Gemini places it natively)
+        image_data = await self._generate_image(
+            image_prompt, aspect_ratio, include_logo=include_logo
+        )
 
         if not image_data:
             raise ValueError("Image generation failed")
-
-        # Overlay brand logo if requested
-        if include_logo:
-            image_data = self._overlay_logo(image_data)
 
         # Upload to Supabase Storage
         image_id = str(uuid.uuid4())
@@ -358,23 +356,121 @@ class ImageService:
 
         return ""
 
+    def _load_logo(self) -> Optional[PILImage.Image]:
+        """Load the brand logo as an RGB PIL Image for passing to Gemini.
+
+        Converts RGBA → RGB (white background) because Gemini's image input
+        does not reliably handle alpha channels.
+        """
+        try:
+            if not LOGO_PATH.exists():
+                logger.warning(f"Logo not found at {LOGO_PATH}, skipping")
+                return None
+
+            logo = PILImage.open(LOGO_PATH)
+
+            # Flatten RGBA onto white background so Gemini accepts it
+            if logo.mode == "RGBA":
+                background = PILImage.new("RGB", logo.size, (255, 255, 255))
+                background.paste(logo, mask=logo.split()[3])  # alpha channel
+                return background
+
+            return logo.convert("RGB")
+        except Exception as e:
+            logger.warning(f"Failed to load logo: {e}")
+            return None
+
+    def _overlay_logo_pil(self, image_bytes: bytes) -> bytes:
+        """Fallback: overlay logo via PIL when Gemini input approach fails."""
+        try:
+            if not LOGO_PATH.exists():
+                return image_bytes
+
+            base = PILImage.open(io.BytesIO(image_bytes)).convert("RGBA")
+            logo = PILImage.open(LOGO_PATH).convert("RGBA")
+
+            # Scale logo to ~8 % of image width
+            max_logo_w = int(base.width * 0.08)
+            if logo.width > max_logo_w:
+                r = max_logo_w / logo.width
+                logo = logo.resize(
+                    (int(logo.width * r), int(logo.height * r)),
+                    PILImage.LANCZOS,
+                )
+
+            # Bottom-right with 3 % padding
+            pad = int(base.width * 0.03)
+            base.paste(logo, (base.width - logo.width - pad, base.height - logo.height - pad), logo)
+
+            out = io.BytesIO()
+            base.save(out, format="PNG")
+            logger.info("Brand logo overlaid via PIL fallback")
+            return out.getvalue()
+        except Exception as e:
+            logger.warning(f"PIL logo overlay failed: {e}")
+            return image_bytes
+
     async def _generate_image(
         self,
         prompt: str,
         aspect_ratio: str,
+        include_logo: bool = False,
     ) -> Optional[bytes]:
-        """Generate an image using Gemini 3 Pro Image."""
+        """Generate an image using Gemini 3 Pro Image.
+
+        When include_logo is True the brand logo is passed as an input image
+        so Gemini can position it intelligently without overlapping text.
+        Falls back to PIL overlay if the logo-inclusive request fails.
+        """
         if not self.genai_client:
             logger.error("genai client not initialised")
             return None
 
-        try:
-            # Validate aspect ratio
-            ratio = aspect_ratio if aspect_ratio in SUPPORTED_ASPECT_RATIOS else DEFAULT_ASPECT_RATIO
+        ratio = aspect_ratio if aspect_ratio in SUPPORTED_ASPECT_RATIOS else DEFAULT_ASPECT_RATIO
+        logo_image = self._load_logo() if include_logo else None
 
+        # ── Attempt 1: pass logo as input image so Gemini places it ──────
+        if logo_image:
+            try:
+                logo_instruction = (
+                    "\n\nIMPORTANT — BRAND LOGO PLACEMENT: "
+                    "The attached image is the brand logo. "
+                    "Place it small (roughly 8 % of the image width) in the "
+                    "bottom-right corner of the generated image. "
+                    "Make sure it does NOT overlap any text, headings, or key "
+                    "visual elements. Leave a small margin around it. "
+                    "Keep the logo exactly as provided — do not redraw, "
+                    "recolor, or distort it."
+                )
+                contents: list = [prompt + logo_instruction, logo_image]
+                logger.info(f"Generating image with {IMAGE_MODEL} ({ratio}) + logo")
+
+                response = await asyncio.to_thread(
+                    self.genai_client.models.generate_content,
+                    model=IMAGE_MODEL,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["IMAGE"],
+                        image_config=types.ImageConfig(
+                            aspect_ratio=ratio,
+                        ),
+                    ),
+                )
+
+                if response and response.candidates:
+                    for part in response.candidates[0].content.parts:
+                        if part.inline_data and part.inline_data.mime_type.startswith("image/"):
+                            logger.info(f"Generated image with logo ({len(part.inline_data.data)} bytes)")
+                            return part.inline_data.data
+
+                logger.warning("No image data in logo response, falling back")
+            except Exception as e:
+                logger.warning(f"Logo-inclusive generation failed, falling back to PIL overlay: {e}")
+
+        # ── Attempt 2 / fallback: generate without logo ──────────────────
+        try:
             logger.info(f"Generating image with {IMAGE_MODEL} ({ratio})")
 
-            # generate_content is synchronous; run in a thread to stay async
             response = await asyncio.to_thread(
                 self.genai_client.models.generate_content,
                 model=IMAGE_MODEL,
@@ -387,12 +483,14 @@ class ImageService:
                 ),
             )
 
-            # Extract image from response parts
             if response and response.candidates:
                 for part in response.candidates[0].content.parts:
                     if part.inline_data and part.inline_data.mime_type.startswith("image/"):
                         image_bytes = part.inline_data.data
                         logger.info(f"Generated image ({len(image_bytes)} bytes)")
+                        # Apply PIL overlay as fallback when logo was requested
+                        if include_logo:
+                            image_bytes = self._overlay_logo_pil(image_bytes)
                         return image_bytes
 
             logger.warning("No image data in response")
@@ -401,43 +499,6 @@ class ImageService:
         except Exception as e:
             logger.error(f"Image generation error: {e}", exc_info=True)
             return None
-
-    def _overlay_logo(self, image_bytes: bytes) -> bytes:
-        """Overlay the brand logo on the top-right corner of the image."""
-        try:
-            if not LOGO_PATH.exists():
-                logger.warning(f"Logo not found at {LOGO_PATH}, skipping overlay")
-                return image_bytes
-
-            base = PILImage.open(io.BytesIO(image_bytes)).convert("RGBA")
-            logo = PILImage.open(LOGO_PATH).convert("RGBA")
-
-            # Scale logo to ~8% of the image width
-            max_logo_width = int(base.width * 0.08)
-            if logo.width > max_logo_width:
-                ratio = max_logo_width / logo.width
-                logo = logo.resize(
-                    (int(logo.width * ratio), int(logo.height * ratio)),
-                    PILImage.LANCZOS,
-                )
-
-            # Position: top-right with 3% padding
-            padding = int(base.width * 0.03)
-            x = base.width - logo.width - padding
-            y = padding
-
-            # Paste with alpha transparency
-            base.paste(logo, (x, y), logo)
-
-            # Convert back to PNG bytes
-            output = io.BytesIO()
-            base.save(output, format="PNG")
-            logger.info("Brand logo overlaid on image")
-            return output.getvalue()
-
-        except Exception as e:
-            logger.warning(f"Logo overlay failed, returning original image: {e}")
-            return image_bytes
 
     async def regenerate_image(self, image_id: str) -> Dict[str, Any]:
         """Regenerate an existing image with the same settings."""

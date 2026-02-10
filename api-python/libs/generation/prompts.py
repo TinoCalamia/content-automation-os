@@ -101,9 +101,9 @@ X_WRITER_PROMPT = """You are an expert X/Twitter content writer.
 
 ## X Best Practices
 - Punchy, direct language
-- Under 280 characters for single posts
+- **HARD LIMIT: Every individual tweet MUST be ≤ 280 characters** (including spaces, punctuation, hashtags). Count carefully.
 - Include one "bookmarkable" line (principle, checklist, framework)
-- Minimal hashtags (0-2 max)
+- Minimal hashtags (0-2 max, counted within the 280 char limit)
 - Fewer emojis than LinkedIn
 - Optimize for replies and bookmarks
 
@@ -121,16 +121,18 @@ For threads: dedicate one tweet per section of the SLAY framework.
 
 ## Task
 Write 3 X post variants based on the plan:
-1. "Single" - One punchy post under 280 chars
-2. "Bold" - More provocative take
-3. "Thread" - 3-5 post thread format (separate with ---)
+1. "Single" - One punchy post, MUST be ≤ 280 characters total
+2. "Bold" - More provocative take, MUST be ≤ 280 characters total
+3. "Thread" - 3-5 post thread (separate posts with ---). EACH post MUST be ≤ 280 characters.
+
+CRITICAL: Count characters carefully. If you cannot fit the message in 280 chars, use the Thread format. Every single tweet must be ≤ 280 characters with no exceptions.
 
 Respond in JSON format:
 {{
     "variants": [
-        {{"label": "Single", "content": "Post text here..."}},
-        {{"label": "Bold", "content": "Post text here..."}},
-        {{"label": "Thread", "content": "Post 1\\n---\\nPost 2\\n---\\nPost 3"}}
+        {{"label": "Single", "content": "Post text here (≤280 chars)..."}},
+        {{"label": "Bold", "content": "Post text here (≤280 chars)..."}},
+        {{"label": "Thread", "content": "Tweet 1 (≤280)\\n---\\nTweet 2 (≤280)\\n---\\nTweet 3 (≤280)"}}
     ],
     "suggested_hashtags": ["tag1"]
 }}"""
@@ -262,14 +264,15 @@ Create a 3-5 post thread that:
 - Each post can stand alone
 - Builds to a conclusion
 - Last post has a CTA
+- **CRITICAL: Every single tweet MUST be ≤ 280 characters**
 
 Respond in JSON format:
 {{
     "thread": [
-        "Post 1 (hook)...",
-        "Post 2...",
-        "Post 3...",
-        "Post 4 (conclusion + CTA)..."
+        "Post 1 — hook (≤280 chars)...",
+        "Post 2 (≤280 chars)...",
+        "Post 3 (≤280 chars)...",
+        "Post 4 — conclusion + CTA (≤280 chars)..."
     ]
 }}"""
 

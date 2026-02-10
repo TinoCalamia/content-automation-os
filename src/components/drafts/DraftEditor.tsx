@@ -266,8 +266,14 @@ export function DraftEditor({ draft, onUpdate, onClose }: DraftEditorProps) {
     return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/generated-images/${img.storage_path}`;
   };
 
-  const charCount = content.length;
-  const isOverLimit = charCount > config.charLimit;
+  // For X threads (posts separated by ---), check per-tweet limits
+  const isThread = draft.platform === 'x' && content.includes('\n---\n');
+  const tweets = isThread
+    ? content.split(/\n---\n/).map((t) => t.trim()).filter(Boolean)
+    : [content];
+  const tweetOverLimits = tweets.map((t) => t.length > config.charLimit);
+  const charCount = isThread ? Math.max(...tweets.map((t) => t.length)) : content.length;
+  const isOverLimit = isThread ? tweetOverLimits.some(Boolean) : content.length > config.charLimit;
 
   return (
     <Card className="h-full flex flex-col bg-card/50 border-border/50">
@@ -309,7 +315,18 @@ export function DraftEditor({ draft, onUpdate, onClose }: DraftEditorProps) {
                   className="h-full resize-none"
                 />
                 <div className={`absolute bottom-2 right-2 text-xs ${isOverLimit ? 'text-destructive' : 'text-muted-foreground'}`}>
-                  {charCount} / {config.charLimit}
+                  {isThread ? (
+                    <span>
+                      {tweets.length} tweets · longest {charCount} / {config.charLimit}
+                      {tweetOverLimits.some(Boolean) && (
+                        <span className="text-destructive ml-1">
+                          ({tweetOverLimits.filter(Boolean).length} over limit)
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <span>{content.length} / {config.charLimit}</span>
+                  )}
                 </div>
               </div>
 
