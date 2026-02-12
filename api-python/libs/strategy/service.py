@@ -290,49 +290,62 @@ class StrategyService:
         response = self.gemini.generate_content(prompt)
         parsed = self._parse_json_response(response.text)
 
-        # Build response
+        # Build response — safely handle unpredictable LLM output
         analysis_data = parsed.get("analysis", {})
         analysis = StrategyAnalysis(
-            tofu_percentage=float(analysis_data.get("tofu_percentage", 0)),
-            mofu_percentage=float(analysis_data.get("mofu_percentage", 0)),
-            bofu_percentage=float(analysis_data.get("bofu_percentage", 0)),
-            balance_score=int(analysis_data.get("balance_score", 5)),
-            summary=analysis_data.get("summary", ""),
+            tofu_percentage=self._safe_float(analysis_data.get("tofu_percentage"), 0),
+            mofu_percentage=self._safe_float(analysis_data.get("mofu_percentage"), 0),
+            bofu_percentage=self._safe_float(analysis_data.get("bofu_percentage"), 0),
+            balance_score=self._safe_int(analysis_data.get("balance_score"), 5),
+            summary=str(analysis_data.get("summary", "")),
         )
 
-        gaps = [
-            StrategyGap(
-                stage=g.get("stage", "tofu"),
-                severity=g.get("severity", "medium"),
-                description=g.get("description", ""),
-            )
-            for g in parsed.get("gaps", [])
-            if g.get("stage") in VALID_STAGES
-        ]
+        valid_severities = {"low", "medium", "high"}
+        gaps = []
+        for g in parsed.get("gaps", []):
+            if g.get("stage") not in VALID_STAGES:
+                continue
+            severity = g.get("severity", "medium")
+            if severity not in valid_severities:
+                severity = "medium"
+            try:
+                gaps.append(StrategyGap(
+                    stage=g["stage"],
+                    severity=severity,
+                    description=str(g.get("description", "")),
+                ))
+            except Exception as e:
+                logger.warning(f"Skipping malformed gap entry: {e}")
 
-        recommendations = [
-            ContentRecommendation(
-                stage=r.get("stage", "tofu"),
-                content_type=r.get("content_type", ""),
-                title=r.get("title", ""),
-                description=r.get("description", ""),
-                platform=r.get("platform", "linkedin"),
-            )
-            for r in parsed.get("recommendations", [])
-            if r.get("stage") in VALID_STAGES
-        ]
+        recommendations = []
+        for r in parsed.get("recommendations", []):
+            if r.get("stage") not in VALID_STAGES:
+                continue
+            try:
+                recommendations.append(ContentRecommendation(
+                    stage=r["stage"],
+                    content_type=str(r.get("content_type", "")),
+                    title=str(r.get("title", "")),
+                    description=str(r.get("description", "")),
+                    platform=str(r.get("platform", "linkedin")),
+                ))
+            except Exception as e:
+                logger.warning(f"Skipping malformed recommendation entry: {e}")
 
-        post_ideas = [
-            PostIdea(
-                stage=p.get("stage", "tofu"),
-                platform=p.get("platform", "linkedin"),
-                angle=p.get("angle", ""),
-                hook=p.get("hook", ""),
-                outline=p.get("outline", ""),
-            )
-            for p in parsed.get("post_ideas", [])
-            if p.get("stage") in VALID_STAGES
-        ]
+        post_ideas = []
+        for p in parsed.get("post_ideas", []):
+            if p.get("stage") not in VALID_STAGES:
+                continue
+            try:
+                post_ideas.append(PostIdea(
+                    stage=p["stage"],
+                    platform=str(p.get("platform", "linkedin")),
+                    angle=str(p.get("angle", "")),
+                    hook=str(p.get("hook", "")),
+                    outline=str(p.get("outline", "")),
+                ))
+            except Exception as e:
+                logger.warning(f"Skipping malformed post idea entry: {e}")
 
         return StrategyRecommendation(
             analysis=analysis,
@@ -364,6 +377,40 @@ class StrategyService:
                 context["brand_guidelines"] = doc.get("content_md", "")
 
         return context
+
+    @staticmethod
+    def _safe_float(value: Any, default: float = 0.0) -> float:
+        """Safely convert LLM output to float."""
+        if value is None:
+            return default
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            # Handle strings like "45%" or "8/10"
+            if isinstance(value, str):
+                cleaned = value.replace("%", "").strip()
+                try:
+                    return float(cleaned)
+                except (ValueError, TypeError):
+                    pass
+            return default
+
+    @staticmethod
+    def _safe_int(value: Any, default: int = 0) -> int:
+        """Safely convert LLM output to int."""
+        if value is None:
+            return default
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            if isinstance(value, str):
+                # Handle "8/10" -> 8, or "8.5" -> 8
+                cleaned = value.split("/")[0].strip()
+                try:
+                    return int(float(cleaned))
+                except (ValueError, TypeError):
+                    pass
+            return default
 
     def _get_date_filter(self, time_period: str) -> Optional[str]:
         """Convert time period to ISO date string filter."""
