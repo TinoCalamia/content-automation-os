@@ -75,8 +75,11 @@ class RegenerateRequest(BaseModel):
     """Request to regenerate specific aspects of a draft."""
     
     draft_id: str = Field(..., description="Draft ID to regenerate")
-    action: Literal["hook", "shorten", "direct", "storytelling", "cta", "thread"] = Field(
+    action: Literal["hook", "shorten", "direct", "storytelling", "cta", "thread", "rewrite"] = Field(
         ..., description="Regeneration action"
+    )
+    feedback: Optional[str] = Field(
+        None, description="User feedback to guide the rewrite (used with 'rewrite' action)"
     )
 
 

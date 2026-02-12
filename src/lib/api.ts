@@ -207,7 +207,8 @@ class ApiClient {
 
   async regenerate(data: {
     draft_id: string;
-    action: 'hook' | 'shorten' | 'direct' | 'storytelling' | 'cta' | 'thread';
+    action: 'hook' | 'shorten' | 'direct' | 'storytelling' | 'cta' | 'thread' | 'rewrite';
+    feedback?: string;
   }) {
     return this.request<{ result: unknown }>('/api/generation/regenerate', {
       method: 'POST',

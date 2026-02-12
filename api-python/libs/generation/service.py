@@ -20,6 +20,7 @@ from libs.generation.prompts import (
     REGENERATE_STORYTELLING_PROMPT,
     REGENERATE_CTA_PROMPT,
     REGENERATE_THREAD_PROMPT,
+    REGENERATE_REWRITE_PROMPT,
 )
 
 logger = setup_logging(__name__)
@@ -355,7 +356,8 @@ class GenerationService:
     async def regenerate(
         self,
         draft_id: str,
-        action: str
+        action: str,
+        feedback: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Regenerate specific aspects of a draft.
@@ -363,6 +365,7 @@ class GenerationService:
         Args:
             draft_id: Draft ID to regenerate
             action: Regeneration action
+            feedback: Optional user feedback to guide the rewrite
             
         Returns:
             Updated draft content
@@ -380,49 +383,65 @@ class GenerationService:
         # Fetch context
         context = await self._fetch_context(draft["workspace_id"], draft["platform"])
         
-        # Select prompt based on action
-        prompt_map = {
-            "hook": REGENERATE_HOOK_PROMPT,
-            "shorten": REGENERATE_SHORTEN_PROMPT,
-            "direct": REGENERATE_DIRECT_PROMPT,
-            "storytelling": REGENERATE_STORYTELLING_PROMPT,
-            "cta": REGENERATE_CTA_PROMPT,
-            "thread": REGENERATE_THREAD_PROMPT,
-        }
-        
-        prompt_template = prompt_map.get(action)
-        if not prompt_template:
-            raise ValueError(f"Unknown action: {action}")
-        
-        prompt = prompt_template.format(
-            content=draft["content_text"],
-            tone_of_voice=context.get("tone_of_voice", "")
-        )
-        
-        # Generate
-        response = self.gemini.generate_content(prompt)
-        result_data = self._parse_json_response(response.text)
-        
-        # Extract new content based on action
-        new_content = None
-        if action == "hook" and "recommended_full_post" in result_data:
-            new_content = result_data["recommended_full_post"]
-        elif action == "shorten" and "shortened" in result_data:
-            new_content = result_data["shortened"]
-        elif action == "direct" and "direct_version" in result_data:
-            new_content = result_data["direct_version"]
-        elif action == "storytelling" and "story_version" in result_data:
-            new_content = result_data["story_version"]
-        elif action == "thread" and "thread" in result_data:
-            new_content = "\n---\n".join(result_data["thread"])
-        elif action == "cta" and "ctas" in result_data:
-            # Return CTAs as options, don't update main content
-            return {
-                "draft_id": draft_id,
-                "action": action,
-                "options": result_data["ctas"],
-                "content": draft["content_text"]
+        # Handle rewrite action with feedback separately
+        if action == "rewrite":
+            if not feedback or not feedback.strip():
+                raise ValueError("Feedback is required for the rewrite action")
+            
+            prompt = REGENERATE_REWRITE_PROMPT.format(
+                content=draft["content_text"],
+                platform=draft["platform"],
+                tone_of_voice=context.get("tone_of_voice", ""),
+                feedback=feedback.strip()
+            )
+            
+            response = self.gemini.generate_content(prompt)
+            result_data = self._parse_json_response(response.text)
+            new_content = result_data.get("rewritten")
+        else:
+            # Select prompt based on action
+            prompt_map = {
+                "hook": REGENERATE_HOOK_PROMPT,
+                "shorten": REGENERATE_SHORTEN_PROMPT,
+                "direct": REGENERATE_DIRECT_PROMPT,
+                "storytelling": REGENERATE_STORYTELLING_PROMPT,
+                "cta": REGENERATE_CTA_PROMPT,
+                "thread": REGENERATE_THREAD_PROMPT,
             }
+            
+            prompt_template = prompt_map.get(action)
+            if not prompt_template:
+                raise ValueError(f"Unknown action: {action}")
+            
+            prompt = prompt_template.format(
+                content=draft["content_text"],
+                tone_of_voice=context.get("tone_of_voice", "")
+            )
+            
+            # Generate
+            response = self.gemini.generate_content(prompt)
+            result_data = self._parse_json_response(response.text)
+            
+            # Extract new content based on action
+            new_content = None
+            if action == "hook" and "recommended_full_post" in result_data:
+                new_content = result_data["recommended_full_post"]
+            elif action == "shorten" and "shortened" in result_data:
+                new_content = result_data["shortened"]
+            elif action == "direct" and "direct_version" in result_data:
+                new_content = result_data["direct_version"]
+            elif action == "storytelling" and "story_version" in result_data:
+                new_content = result_data["story_version"]
+            elif action == "thread" and "thread" in result_data:
+                new_content = "\n---\n".join(result_data["thread"])
+            elif action == "cta" and "ctas" in result_data:
+                # Return CTAs as options, don't update main content
+                return {
+                    "draft_id": draft_id,
+                    "action": action,
+                    "options": result_data["ctas"],
+                    "content": draft["content_text"]
+                }
         
         # Enforce X character limits on regenerated content
         if new_content and draft["platform"] == "x":

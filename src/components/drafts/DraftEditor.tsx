@@ -22,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import {
   Linkedin,
   Twitter,
@@ -44,6 +45,8 @@ import {
   ZoomIn,
   ChevronRight,
   ChevronDown,
+  RotateCcw,
+  SendHorizontal,
 } from 'lucide-react';
 import { PublishDialog } from '@/components/publish/PublishDialog';
 import type { Draft, GeneratedImage, FunnelStage } from '@/types/database';
@@ -91,6 +94,7 @@ export function DraftEditor({ draft, onUpdate, onClose }: DraftEditorProps) {
   const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [generatingImages, setGeneratingImages] = useState(false);
+  const [rewriteFeedback, setRewriteFeedback] = useState('');
 
   const config = platformConfig[draft.platform] || platformConfig.linkedin;
   const Icon = config.icon;
@@ -125,18 +129,23 @@ export function DraftEditor({ draft, onUpdate, onClose }: DraftEditorProps) {
     }
   };
 
-  const handleRegenerate = async (action: string) => {
+  const handleRegenerate = async (action: string, feedback?: string) => {
     setRegenerating(action);
     const fastApiUrl = process.env.NEXT_PUBLIC_FASTAPI_URL || 'http://localhost:8000';
 
     try {
+      const body: Record<string, string> = { draft_id: draft.id, action };
+      if (feedback) {
+        body.feedback = feedback;
+      }
+
       const response = await fetch(`${fastApiUrl}/api/generation/regenerate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ draft_id: draft.id, action }),
+        body: JSON.stringify(body),
       });
 
       const data = await response.json();
@@ -148,6 +157,9 @@ export function DraftEditor({ draft, onUpdate, onClose }: DraftEditorProps) {
       if (data.data.content) {
         setContent(data.data.content);
         toast.success(`Regenerated: ${action}`);
+        if (action === 'rewrite') {
+          setRewriteFeedback('');
+        }
       } else if (data.data.options) {
         // Handle CTA options
         toast.info('CTA options generated', {
@@ -330,6 +342,41 @@ export function DraftEditor({ draft, onUpdate, onClose }: DraftEditorProps) {
                 </div>
               </div>
 
+              {/* Regenerate with feedback */}
+              <div className="flex gap-2">
+                <Input
+                  value={rewriteFeedback}
+                  onChange={(e) => setRewriteFeedback(e.target.value)}
+                  placeholder="Rewrite instructions, e.g. more casual, add a story..."
+                  className="flex-1 text-sm h-9"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && rewriteFeedback.trim() && !regenerating) {
+                      handleRegenerate('rewrite', rewriteFeedback.trim());
+                    }
+                  }}
+                  disabled={regenerating !== null}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleRegenerate('rewrite', rewriteFeedback.trim())}
+                  disabled={regenerating !== null || !rewriteFeedback.trim()}
+                  className="shrink-0"
+                >
+                  {regenerating === 'rewrite' ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Rewriting...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      Rewrite
+                    </>
+                  )}
+                </Button>
+              </div>
+
               {/* Funnel Stage */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium">
@@ -482,28 +529,72 @@ export function DraftEditor({ draft, onUpdate, onClose }: DraftEditorProps) {
 
             <TabsContent value="regenerate" className="h-full m-0">
               <ScrollArea className="h-full">
-                <div className="grid grid-cols-2 gap-2">
-                  {regenerateActions.map((action) => (
-                    <Button
-                      key={action.id}
-                      variant="outline"
-                      className="h-auto py-3 px-4 flex flex-col items-start gap-1"
-                      onClick={() => handleRegenerate(action.id)}
-                      disabled={regenerating !== null}
-                    >
-                      <div className="flex items-center gap-2 w-full">
-                        {regenerating === action.id ? (
+                <div className="space-y-4">
+                  {/* Rewrite with feedback */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <RotateCcw className="h-4 w-4" />
+                      Rewrite with feedback
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Describe what you'd like to change and AI will rewrite the post accordingly.
+                    </p>
+                    <div className="flex gap-2">
+                      <Input
+                        value={rewriteFeedback}
+                        onChange={(e) => setRewriteFeedback(e.target.value)}
+                        placeholder="e.g. Make it more casual, add a personal anecdote..."
+                        className="flex-1 text-sm"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && rewriteFeedback.trim() && !regenerating) {
+                            handleRegenerate('rewrite', rewriteFeedback.trim());
+                          }
+                        }}
+                        disabled={regenerating !== null}
+                      />
+                      <Button
+                        size="icon"
+                        onClick={() => handleRegenerate('rewrite', rewriteFeedback.trim())}
+                        disabled={regenerating !== null || !rewriteFeedback.trim()}
+                      >
+                        {regenerating === 'rewrite' ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                          <action.icon className="h-4 w-4" />
+                          <SendHorizontal className="h-4 w-4" />
                         )}
-                        <span className="font-medium">{action.label}</span>
-                      </div>
-                      <span className="text-xs text-muted-foreground text-left">
-                        {action.description}
-                      </span>
-                    </Button>
-                  ))}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Quick actions */}
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Quick actions</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {regenerateActions.map((action) => (
+                        <Button
+                          key={action.id}
+                          variant="outline"
+                          className="h-auto py-3 px-4 flex flex-col items-start gap-1"
+                          onClick={() => handleRegenerate(action.id)}
+                          disabled={regenerating !== null}
+                        >
+                          <div className="flex items-center gap-2 w-full">
+                            {regenerating === action.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <action.icon className="h-4 w-4" />
+                            )}
+                            <span className="font-medium">{action.label}</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground text-left">
+                            {action.description}
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </ScrollArea>
             </TabsContent>

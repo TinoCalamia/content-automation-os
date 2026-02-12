@@ -276,3 +276,28 @@ Respond in JSON format:
     ]
 }}"""
 
+REGENERATE_REWRITE_PROMPT = """Rewrite this social media post based on the user's feedback.
+
+Original post:
+{content}
+
+Platform: {platform}
+
+Tone of Voice:
+{tone_of_voice}
+
+## User Feedback
+{feedback}
+
+## Task
+Rewrite the post incorporating the user's feedback while:
+- Keeping the core message/topic intact
+- Matching the brand voice and tone
+- Staying optimized for the platform
+- Applying the specific direction the user asked for
+
+Respond in JSON format:
+{{
+    "rewritten": "Full rewritten post text here..."
+}}"""
+

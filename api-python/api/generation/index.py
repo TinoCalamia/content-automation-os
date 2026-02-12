@@ -223,6 +223,7 @@ async def regenerate_content(
     - storytelling: Add more story elements
     - cta: Generate alternative CTAs
     - thread: Convert to thread format
+    - rewrite: Full rewrite guided by user feedback (requires feedback field)
     """
     await get_authenticated_user(authorization)
     
@@ -234,7 +235,8 @@ async def regenerate_content(
         
         result = await generation_service.regenerate(
             draft_id=request.draft_id,
-            action=request.action
+            action=request.action,
+            feedback=request.feedback
         )
         
         return ApiResponse(
